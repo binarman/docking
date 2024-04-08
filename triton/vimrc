@@ -1,0 +1,8 @@
+set hlsearch
+set number
+set smarttab
+set softtabstop=4
+set autoindent
+set list
+set expandtab
+set shiftwidth=2
