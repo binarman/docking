@@ -3,12 +3,15 @@ FROM rocm/pytorch
 COPY bashrc /root/.bashrc
 COPY vimrc /root/.vimrc
 RUN apt update
+RUN git config --global user.name "Alexander Efimov"
+RUN git config --global user.email "efimov.alexander@gmail.com"
+RUN pip3 install pandas matplotlib pre-commit
+
 RUN git clone https://github.com/openai/triton /triton
 RUN cd /triton/; git remote rename origin openai
 RUN cd /triton/; git remote add binarman https://github.com/binarman/triton; git fetch binarman
-RUN git config --global user.name "Alexander Efimov"
-RUN git config --global user.email "efimov.alexander@gmail.com"
-RUN pip3 install pandas matplotlib
+RUN cd /triton/; pre-commit install
 
 WORKDIR /triton
 ENTRYPOINT bash
+
