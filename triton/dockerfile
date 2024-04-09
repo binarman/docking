@@ -8,6 +8,7 @@ RUN cd /triton/; git remote rename origin openai
 RUN cd /triton/; git remote add binarman https://github.com/binarman/triton; git fetch binarman
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
+RUN pip3 install pandas matplotlib
 
 WORKDIR /triton
 ENTRYPOINT bash
