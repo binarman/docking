@@ -3,6 +3,8 @@ FROM rocm/pytorch
 COPY bashrc /root/.bashrc
 COPY vimrc /root/.vimrc
 COPY prepare_triton_repo.sh /prepare_triton_repo.sh
+COPY push.sh /push.sh
+COPY pull.sh /pull.sh
 
 RUN apt update
 RUN git config --global user.name "Alexander Efimov"
