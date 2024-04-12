@@ -1,16 +1,22 @@
 FROM rocm/pytorch
 
-COPY bashrc /root/.bashrc
+COPY bashrc_addon /root/bashrc_addon
 COPY vimrc /root/.vimrc
-COPY prepare_triton_repo.sh /prepare_triton_repo.sh
-COPY push.sh /push.sh
-COPY pull.sh /pull.sh
+COPY bash_aliases /root/.bash_aliases
+
+COPY prepare_triton_repo.sh /utils/prepare_triton_repo.sh
+COPY push.sh /utils/push.sh
+COPY pull.sh /utils/pull.sh
+COPY run_tests.sh /utils/run_tests.sh
 
 RUN apt update
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 install pandas matplotlib pre-commit
 
+# Initialize bashrc
+RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
+
 WORKDIR /triton
-ENTRYPOINT /prepare_triton_repo.sh /triton; bash
+ENTRYPOINT /utils/prepare_triton_repo.sh /triton; bash
 
