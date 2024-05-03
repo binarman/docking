@@ -8,6 +8,7 @@ COPY prepare_triton_repo.sh /utils/prepare_triton_repo.sh
 COPY push.sh /utils/push.sh
 COPY pull.sh /utils/pull.sh
 COPY run_tests.sh /utils/run_tests.sh
+COPY cmake_wrapper.py /utils/cmake
 
 RUN apt update
 RUN apt install less

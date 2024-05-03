@@ -8,6 +8,6 @@ if [ ! -e "$1/README.md" ]; then
   git fetch binarman
   pre-commit install
   cd python
-  DEBUG=1 pip3 install -e.
+  PATH=/utils:$PATH CMAKE_ARG_DUMP="/triton/.vscode/settings.json" DEBUG=1 /usr/bin/pip3 install -e.
 fi
 
