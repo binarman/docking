@@ -8,6 +8,10 @@ if [ ! -e "$1/README.md" ]; then
   git fetch binarman
   pre-commit install
   cd python
-  PATH=/utils:$PATH CMAKE_ARG_DUMP="/triton/.vscode/settings.json" DEBUG=1 /usr/bin/pip3 install -e.
+  VSCODE_SETTINGS="/triton/.vscode/settings.json"
+  mkdir /triton/.vscode
+  echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
+  DEBUG=1 strace -f -e trace=execve -s 100 pip3 install -e. 2>&1 >/dev/null | grep '"cmake", "/triton"' | sed "s/.*\[\"cmake\", \"\/triton\", \(.*\)\].*/\1/" >> $VSCODE_SETTINGS
+  echo "] }" >> $VSCODE_SETTINGS
 fi
 
