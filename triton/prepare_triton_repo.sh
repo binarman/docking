@@ -1,7 +1,7 @@
 #/usr/bin/bash
 
 if [ ! -e "$1/README.md" ]; then
-  git clone https://github.com/openai/triton "$1"
+  git clone https://github.com/triton-lang/triton "$1"
   cd "$1"
   git remote rename origin openai
   git remote add binarman https://github.com/binarman/triton

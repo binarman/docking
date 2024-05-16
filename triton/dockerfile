@@ -10,7 +10,7 @@ COPY pull.sh /utils/pull.sh
 COPY run_tests.sh /utils/run_tests.sh
 
 RUN apt -y update
-RUN apt -y install less strace
+RUN apt -y install less strace wget
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 install pandas matplotlib pre-commit lit
