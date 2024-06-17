@@ -6,6 +6,8 @@ if [ ! -e "$1/README.md" ]; then
   git remote rename origin openai
   git remote add binarman https://github.com/binarman/triton
   git fetch binarman
+  git remote add rocm https://github.com/ROCm/triton
+  git fetch rocm
   pre-commit install
   cd python
   VSCODE_SETTINGS="/triton/.vscode/settings.json"
