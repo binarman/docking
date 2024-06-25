@@ -1,11 +1,18 @@
 #!/usr/bin/bash
  
 git fetch binarman
-git stash
+
+DIFF_SIZE="$(git diff | wc -l)"
+
+if [ $DIFF_SIZE -ne 0 ]; then
+  git stash
+fi
+
 if ! git rebase binarman/$(git branch --show-current); then
   exit 1
 fi
-if ! git stash pop; then
+
+if [ $DIFF_SIZE -ne 0 ] && ! git stash pop; then
   exit 1
 fi
 
