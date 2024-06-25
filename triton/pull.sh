@@ -11,6 +11,9 @@ fi
 
 if [ "$1" = "build" ]
 then
-  DEBUG=1 pip3 install -e.
+  ROOT_DIR=$(git rev-parse --show-toplevel)
+  pushd "$ROOT_DIR"
+  DEBUG=1 pip3 install -e python
+  popd
 fi
 
