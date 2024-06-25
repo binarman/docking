@@ -1,3 +1,4 @@
 alias pull="/utils/pull.sh"
 alias push="/utils/push.sh"
 alias run_tests="/utils/run_tests.sh"
+alias update_scripts="/utils/update_scripts.sh"

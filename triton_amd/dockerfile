@@ -4,10 +4,7 @@ COPY bashrc_addon /root/bashrc_addon
 COPY vimrc /root/.vimrc
 COPY bash_aliases /root/.bash_aliases
 
-COPY prepare_triton_repo.sh /utils/prepare_triton_repo.sh
-COPY push.sh /utils/push.sh
-COPY pull.sh /utils/pull.sh
-COPY run_tests.sh /utils/run_tests.sh
+COPY utils /utils
 
 RUN apt -y update
 RUN apt -y install less strace wget psmisc
