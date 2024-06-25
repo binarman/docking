@@ -17,3 +17,5 @@ if [ ! -e "$1/README.md" ]; then
   echo "] }" >> $VSCODE_SETTINGS
 fi
 
+cp -r ~/.triton/llvm/* ~/.triton/llvm_persistent
+
