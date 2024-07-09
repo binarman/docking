@@ -17,7 +17,7 @@ while getopts ":hnm:" option; do
   esac
 done
 
-if ((PRE_COMMIT = 1)); then
+if ((PRE_COMMIT == 1)); then
   git commit -a -m"$COMMIT_MESSAGE"
 else
   git commit -a -n -m"$COMMIT_MESSAGE"
