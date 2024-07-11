@@ -2,4 +2,4 @@
 
 git clone --depth 1 https://github.com/binarman/docking /utils/docking
 cp /utils/docking/triton_amd/utils/* /utils/
-rm -r /utils/docking
+rm -rf /utils/docking
