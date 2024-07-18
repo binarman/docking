@@ -21,7 +21,9 @@ while getopts ":hnfm:" option; do
 done
 
 if ((PRE_COMMIT == 1)); then
-  git commit -a -m"$COMMIT_MESSAGE"
+  if ! git commit -a -m"$COMMIT_MESSAGE"; then
+    git commit -a -m"$COMMIT_MESSAGE"
+  fi
 else
   git commit -a -n -m"$COMMIT_MESSAGE"
 fi
