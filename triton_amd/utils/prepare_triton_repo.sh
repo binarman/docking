@@ -11,9 +11,9 @@ if [ ! -e "$1/README.md" ]; then
   pre-commit install
   cd python
   VSCODE_SETTINGS="/triton/.vscode/settings.json"
-  mkdir /triton/.vscode
+  mkdir "$1/.vscode"
   echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
-  DEBUG=1 strace -f -e trace=execve -s 100 pip3 install -e. 2>&1 >/dev/null | grep '"cmake", "/triton"' | sed "s/.*\[\"cmake\", \"\/triton\", \(.*\)\].*/\1/" >> $VSCODE_SETTINGS
+  DEBUG=1 strace -f -e trace=execve -s 100 pip3 install -e. 2>&1 >/dev/null | grep "\"cmake\", \"$1\"" | sed "s/.*\[\"cmake\", \"$1\", \(.*\)\].*/\1/" >> $VSCODE_SETTINGS
   echo "] }" >> $VSCODE_SETTINGS
 fi
 
