@@ -10,10 +10,11 @@ if [ ! -e "$1/README.md" ]; then
   git fetch rocm
   pre-commit install
   cd python
-  VSCODE_SETTINGS="/triton/.vscode/settings.json"
-  mkdir /triton/.vscode
+  VSCODE_SETTINGS="$1/.vscode/settings.json"
+  mkdir "$1/.vscode"
   echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
-  DEBUG=1 strace -f -e trace=execve -s 100 pip3 install -e. 2>&1 >/dev/null | grep '"cmake", "/triton"' | sed "s/.*\[\"cmake\", \"\/triton\", \(.*\)\].*/\1/" >> $VSCODE_SETTINGS
+  ESCAPED_PATH=$(echo "$1" | sed 's/\//\\\//')
+  DEBUG=1 strace -f -e trace=execve -s 100 pip3 install -e. 2>&1 >/dev/null | grep "\"cmake\", \"$1\"" | sed "s/.*\[\"cmake\", \"$ESCAPED_PATH\", \(.*\)\].*/\1/" >> $VSCODE_SETTINGS
   echo "] }" >> $VSCODE_SETTINGS
 fi
 
