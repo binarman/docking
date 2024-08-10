@@ -7,6 +7,7 @@ COPY bash_aliases /root/.bash_aliases
 COPY utils /utils
 
 RUN apt -y update
+RUN apt -y -f install
 RUN apt -y install less strace wget psmisc
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
