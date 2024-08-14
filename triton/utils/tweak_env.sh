@@ -2,15 +2,15 @@
 
 git clone --depth 1 https://github.com/binarman/docking /docking
 
-cp /docking/triton_amd/bashrc_addon /root/bashrc_addon
-cp /docking/triton_amd/vimrc /root/.vimrc
-cp /docking/triton_amd/bash_aliases /root/.bash_aliases
+cp /docking/triton/config_files/bashrc_addon /root/bashrc_addon
+cp /docking/triton/config_files/vimrc /root/.vimrc
+cp /docking/triton/config_files/bash_aliases /root/.bash_aliases
 
-cp -r /docking/triton_amd/utils /utils
+cp -r /docking/triton/utils /utils
 
 apt -y update
 apt -y -f install
-apt -y install less strace wget psmisc
+apt -y install less strace wget psmisc gdb
 git config --global user.name "Alexander Efimov"
 git config --global user.email "efimov.alexander@gmail.com"
 pip3 install pandas matplotlib pre-commit lit

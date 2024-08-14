@@ -1,14 +1,14 @@
 FROM rocm/pytorch
 
-COPY bashrc_addon /root/bashrc_addon
-COPY vimrc /root/.vimrc
-COPY bash_aliases /root/.bash_aliases
+COPY config_files/bashrc_addon /root/bashrc_addon
+COPY config_files/vimrc /root/.vimrc
+COPY config_files/bash_aliases /root/.bash_aliases
 
 COPY utils /utils
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc
+RUN apt -y install less strace wget psmisc gdb
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 install pandas matplotlib pre-commit lit
