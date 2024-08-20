@@ -1,4 +1,4 @@
-FROM pytorch/pytorch
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
 
 COPY config_files/bashrc_addon /root/bashrc_addon
 COPY config_files/vimrc /root/.vimrc
@@ -6,12 +6,15 @@ COPY config_files/bash_aliases /root/.bash_aliases
 
 COPY utils /utils
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb
+RUN apt -y install less strace wget psmisc gdb git clang vim
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
-RUN pip3 install pandas matplotlib pre-commit lit
+RUN pip3 uninstall -y triton
+RUN pip3 install pandas matplotlib pre-commit lit pytest
 
 # Initialize bashrc
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
