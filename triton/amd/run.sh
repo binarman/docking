@@ -4,7 +4,7 @@ CONT_NAME="alefimov-triton"
 IMG_NAME="alefimov-triton-img"
 
 help() {
-  echo "Usage: push [-h] [-n <container name>]"
+  echo "Usage: run.sh [-h] [-n <container name>]"
   echo "   -h : show help message"
   echo "   -n : use non default container name"
 }
