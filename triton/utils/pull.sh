@@ -48,9 +48,9 @@ then
   ROOT_DIR=$(git rev-parse --show-toplevel)
   pushd "$ROOT_DIR"
   if [ $VERBOSE -eq 1 ]; then
-    DEBUG=1 pip3 install --verbose -e python
+    DEBUG=1 pip3 install --verbose -e python --no-build-isolation
   else
-    DEBUG=1 pip3 install -e python
+    DEBUG=1 pip3 install -e python --no-build-isolation
   fi
   popd
 fi
