@@ -18,5 +18,5 @@ while getopts ":hn:" option; do
 done
 
 if ! docker start -ai "$CONT_NAME"; then
-  docker run -it --network host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMG_NAME"
+  docker run -it --network host --gpus all --name "$CONT_NAME" "$IMG_NAME"
 fi
