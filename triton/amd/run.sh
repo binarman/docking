@@ -18,5 +18,12 @@ while getopts ":hn:" option; do
 done
 
 if ! docker start -ai "$CONT_NAME"; then
-  docker run -it --network host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMG_NAME"
+  if test -a /dev/kfd && test -a /dev/dri1; then
+    docker run -it --network host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMG_NAME"
+  else
+    RED='\033[0;31m'
+    NC='\033[0m' # No Color
+    printf "${RED}RUNNING WITHOUT GPU${NC}\n"
+    docker run -it --network host --name "$CONT_NAME" "$IMG_NAME"
+  fi
 fi
