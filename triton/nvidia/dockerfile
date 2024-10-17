@@ -20,5 +20,5 @@ RUN pip3 install pandas matplotlib pre-commit lit pytest pybind11 ninja pytest-x
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
 
 WORKDIR /triton
-ENTRYPOINT /utils/prepare_triton_repo.sh /triton; bash
+ENTRYPOINT /utils/prepare_triton_repo.sh -s /triton; bash
 

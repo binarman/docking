@@ -1,5 +1,28 @@
 #/usr/bin/bash
 
+help() {
+  echo "Usage: prepare_triton_repo.sh [-h] [-s] <path>"
+  echo "     -h     : show help message"
+  echo "     -s     : skip build if python/build dir exists"
+  echo "     <path> : path where to fetch and build triton"
+}
+
+SKIP=0
+while getopts ":hs" option; do
+  case $option in
+    h)help; exit;;
+    s)SKIP=1;;
+    ?)help; exit;;
+  esac
+done
+
+shift $((OPTIND-1))
+
+if [ -z $1 ]; then
+  help
+  exit
+fi
+
 FULL_REPO_PATH=$(realpath $1)
 
 if [ ! -e "$FULL_REPO_PATH/README.md" ]; then
@@ -14,6 +37,11 @@ if [ ! -e "$FULL_REPO_PATH/README.md" ]; then
 fi
 
 cd "$FULL_REPO_PATH/python"
+
+if [ -a build ] && [[ $SKIP = 1 ]]; then
+  exit
+fi
+
 VSCODE_SETTINGS="$FULL_REPO_PATH/.vscode/settings.json"
 mkdir "$FULL_REPO_PATH/.vscode"
 echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
