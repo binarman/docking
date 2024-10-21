@@ -1,0 +1,13 @@
+FROM ubuntu
+
+COPY server.py /server.py
+COPY startup.sh /startup.sh
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt -y update
+RUN apt -y install openssh-server gunicorn
+RUN mkdir run/sshd
+RUN echo "root:qwerty123" | chpasswd 
+RUN echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
+
+CMD /startup.sh
