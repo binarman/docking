@@ -1,7 +1,7 @@
 busy_flag = True
 
 def getMessagePage(flag):
-  message = "MEETING" if busy_flag else ""
+  message = "MEETING" if busy_flag else "FREE"
   color = "red" if busy_flag else "green"
   
   content = f"""
@@ -27,7 +27,8 @@ def getCSS():
   content = """
 p {
   text-align: center;
-  font-size: 25.5vw;
+  line-height: 0%;
+  font-size: 50.0vmin;
 }
 """
   content_type = "text/css"
