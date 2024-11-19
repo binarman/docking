@@ -18,7 +18,7 @@ while getopts ":hn:" option; do
 done
 
 if ! docker start -ai "$CONT_NAME"; then
-  if test -a /dev/kfd && test -a /dev/dri1; then
+  if test -a /dev/kfd && test -a /dev/dri; then
     docker run -it --network host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMG_NAME"
   else
     RED='\033[0;31m'
