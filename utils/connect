@@ -1,0 +1,15 @@
+#!/usr/bin/bash
+if [[ -z $VPN_PASSWORD ]] || [[ -z $VPN_ADDRESS ]] || [[ -z $VPN_USER ]]; then
+  echo "please, set VPN_PASSWORD, VPN_ADDRESS and VPN_USER environment variables"
+  exit
+fi
+
+echo "UID: $UID"
+echo "EUID: $EUID"
+echo "cmd: $0"
+if test $UID -ne 0; then
+  sudo -E $0
+else
+  echo -e "${VPN_PASSWORD}\n1" | openconnect --protocol=gp "${VPN_ADDRESS}" --user=${VPN_USER} --passwd-on-stdin
+fi
+
