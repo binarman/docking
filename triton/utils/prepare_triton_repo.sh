@@ -1,4 +1,4 @@
-#/usr/bin/bash
+#!/usr/bin/bash
 
 help() {
   echo "Usage: prepare_triton_repo.sh [-h] [-s] <path>"
