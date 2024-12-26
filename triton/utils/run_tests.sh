@@ -3,6 +3,10 @@
 set -e
 
 cd $(git rev-parse --show-toplevel)
+
+ctest --test-dir python/build/cmake.linux-*/unittest/
+lit python/build/cmake.linux-*/test
+
 pytest --capture=tee-sys -rfs python/tutorials/06-fused-attention.py
 pytest --capture=tee-sys -rfs third_party/amd/python/test/test_extract_slice.py
 
