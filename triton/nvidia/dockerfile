@@ -15,6 +15,7 @@ RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 uninstall -y triton
 RUN pip3 install pandas matplotlib pre-commit lit pytest pybind11 ninja pytest-xdist
+RUN ln -s /opt/conda/lib/libcublas.so.11 /opt/conda/lib/libcublas.so
 
 # Initialize bashrc
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
