@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 COPY config_files/bashrc_addon /root/bashrc_addon
 COPY config_files/vimrc /root/.vimrc
@@ -15,7 +15,7 @@ RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 uninstall -y triton
 RUN pip3 install pandas matplotlib pre-commit lit pytest pybind11 ninja pytest-xdist
-RUN ln -s /opt/conda/lib/libcublas.so.11 /opt/conda/lib/libcublas.so
+RUN ln -s /opt/conda/lib/python3.11/site-packages/nvidia/cublas/lib/libcublas.so.12 /opt/conda/lib/libcublas.so
 
 # Initialize bashrc
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
