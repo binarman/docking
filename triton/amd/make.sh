@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-IMG_NAME="alefimov-triton-img"
+IMG_NAME="tuning-triton-img"
 
 cp -r ../utils .
 cp -r ../config_files .

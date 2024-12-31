@@ -31,9 +31,12 @@ if [ ! -e "$FULL_REPO_PATH/README.md" ]; then
   git remote rename origin openai
   git remote add binarman https://github.com/binarman/triton
   git fetch binarman
+  git remote add simonidaa https://github.com/simonidaa/triton
+  git fetch simonidaa
   git remote add rocm https://github.com/ROCm/triton
   git fetch rocm
   pre-commit install
+  git checkout autotuner_parallel
 fi
 
 cd "$FULL_REPO_PATH/python"

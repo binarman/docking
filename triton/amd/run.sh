@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
-CONT_NAME="alefimov-triton"
-IMG_NAME="alefimov-triton-img"
+CONT_NAME="tuning-triton"
+IMG_NAME="tuning-triton-img"
 
 help() {
   echo "Usage: run.sh [-h] [-n <container name>]"
