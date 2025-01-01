@@ -17,6 +17,10 @@ Each  directory contains files
 
 [/meeting_alert](https://github.com/binarman/docking/tree/main/meeting_alert): scripts to display status busy/free status in browser depending on is there meeting in progress. 
 
+### Stable diffusion webui
+
+[/sd_webui](https://github.com/binarman/docking/tree/main/sd_webui): infrastructure to deploy stable diffusion model on local machine.
+
 ### Utils
 
 [/utils](https://github.com/binarman/docking/tree/main/utils): set of small non specific utils
