@@ -18,8 +18,12 @@ while getopts ":hn:" option; do
 done
 
 if ! docker start -ai "$CONT_NAME"; then
-  if test -a /dev/kfd && test -a /dev/dri; then
+  HAS_AMD_GPU=$(test -a /dev/kfd && test -a /dev/dri && echo 1)
+  HAS_NVIDIA_GPU=$(test -a /dev/nvidia0 && echo 1)
+  if [[ $HAS_AMD_GPU = 1 ]]; then
     docker run -it --network host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMG_NAME"
+  elif [[ $HAS_NVIDIA_GPU = 1 ]]; then
+    docker run -it --network host --gpus all --name "$CONT_NAME" "$IMG_NAME"
   else
     RED='\033[0;31m'
     NC='\033[0m' # No Color
