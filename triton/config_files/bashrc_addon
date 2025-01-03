@@ -21,5 +21,6 @@ else
 fi
 unset color_prompt
 
-export MAX_JOBS=16
+MEM_SIZE=$(free --giga|grep Mem|sed -e 's/Mem: *\([0-9]*\).*/\1/')
+export MAX_JOBS=$(echo "$MEM_SIZE/8" | bc)
 export ROCBLAS_INTERNAL_FP16_ALT_IMPL=0

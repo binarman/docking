@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb git clang vim
+RUN apt -y install less strace wget psmisc gdb git clang vim bc
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 uninstall -y triton

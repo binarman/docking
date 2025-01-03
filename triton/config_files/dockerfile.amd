@@ -8,7 +8,7 @@ COPY utils /utils
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb
+RUN apt -y install less strace wget psmisc gdb bc
 RUN git config --global user.name "Alexander Efimov"
 RUN git config --global user.email "efimov.alexander@gmail.com"
 RUN pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pip==21.0 pybind11
