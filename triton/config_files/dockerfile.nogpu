@@ -1,5 +1,9 @@
 FROM ubuntu
 
+ARG USER_NAME
+ARG USER_EMAIL
+ARG INITIAL_TRITON_BRANCH
+
 COPY config_files/bashrc_addon /root/bashrc_addon
 COPY config_files/vimrc /root/.vimrc
 COPY config_files/bash_aliases /root/.bash_aliases
@@ -11,8 +15,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt -y update
 RUN apt -y -f install
 RUN apt -y install less strace wget psmisc gdb git clang vim bc python3-venv python3-dev
-RUN git config --global user.name "Alexander Efimov"
-RUN git config --global user.email "efimov.alexander@gmail.com"
+RUN git config --global user.name "$USER_NAME"
+RUN git config --global user.email "$USER_EMAIL"
 RUN python3 -m venv /python_venv
 ENV PATH="/python_venv/bin:$PATH"
 RUN pip3 install numpy==1.26.4 pandas matplotlib pre-commit lit pytest pybind11 ninja pytest-xdist cmake wheel
@@ -22,5 +26,5 @@ RUN pip3 install torch torchvision torchaudio --index-url https://download.pytor
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
 
 WORKDIR /triton
-ENTRYPOINT /utils/prepare_triton_repo.sh -s /triton; bash
+ENTRYPOINT /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash
 

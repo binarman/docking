@@ -1,5 +1,9 @@
 FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
+ARG USER_NAME
+ARG USER_EMAIL
+ARG INITIAL_TRITON_BRANCH
+
 COPY config_files/bashrc_addon /root/bashrc_addon
 COPY config_files/vimrc /root/.vimrc
 COPY config_files/bash_aliases /root/.bash_aliases
@@ -11,8 +15,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt -y update
 RUN apt -y -f install
 RUN apt -y install less strace wget psmisc gdb git clang vim bc
-RUN git config --global user.name "Alexander Efimov"
-RUN git config --global user.email "efimov.alexander@gmail.com"
+RUN git config --global user.name "$USER_NAME"
+RUN git config --global user.email "$USER_EMAIL"
 RUN pip3 uninstall -y triton
 RUN pip3 install pandas matplotlib pre-commit lit pytest pybind11 ninja pytest-xdist
 RUN ln -s /opt/conda/lib/python3.11/site-packages/nvidia/cublas/lib/libcublas.so.12 /opt/conda/lib/libcublas.so
@@ -21,5 +25,5 @@ RUN ln -s /opt/conda/lib/python3.11/site-packages/nvidia/cublas/lib/libcublas.so
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
 
 WORKDIR /triton
-ENTRYPOINT /utils/prepare_triton_repo.sh -s /triton; bash
+ENTRYPOINT /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash
 

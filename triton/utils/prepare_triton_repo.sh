@@ -2,16 +2,19 @@
 
 help() {
   echo "Usage: prepare_triton_repo.sh [-h] [-s] <path>"
-  echo "     -h     : show help message"
-  echo "     -s     : skip build if python/build dir exists"
-  echo "     <path> : path where to fetch and build triton"
+  echo "     -h        : show help message"
+  echo "     -s        : skip build if python/build dir exists"
+  echo "     -b <name> : name of branch to checkout before build"
+  echo "     <path>    : path where to fetch and build triton"
 }
 
 SKIP=0
-while getopts ":hs" option; do
+BRANCH_NAME=""
+while getopts ":hsb:" option; do
   case $option in
     h)help; exit;;
     s)SKIP=1;;
+    b)BRANCH_NAME="$OPTARG";;
     ?)help; exit;;
   esac
 done
@@ -28,6 +31,9 @@ FULL_REPO_PATH=$(realpath $1)
 if [ ! -e "$FULL_REPO_PATH/README.md" ]; then
   git clone https://github.com/triton-lang/triton "$FULL_REPO_PATH"
   cd "$FULL_REPO_PATH"
+  if [[ "$BRANCH_NAME" ]]; then
+    git checkout "$BRANCH_NAME"
+  fi
   git remote rename origin openai
   git remote add binarman https://github.com/binarman/triton
   git fetch binarman
