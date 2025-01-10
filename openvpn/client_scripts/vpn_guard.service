@@ -1,0 +1,11 @@
+[Unit]
+Description=VPN guard
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=/usr/custom_bin/stop_on_torrent.sh
+
