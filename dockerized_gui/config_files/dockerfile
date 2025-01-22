@@ -1,0 +1,44 @@
+FROM ubuntu:24.04
+
+ARG PASSWORD
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update
+RUN apt install -y sudo wget gpg xterm xutils pekwm openssh-server thunar tint2
+
+# configure ssh
+RUN echo "PermitRootLogin yes" >>  /etc/ssh/sshd_config
+RUN echo "X11UseLocalhost no" >> /etc/ssh/sshd_config
+
+# firefox installation instructions from https://support.mozilla.org/en-US/kb/install-firefox-linux
+RUN install -d -m 0755 /etc/apt/keyrings
+RUN wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- > /etc/apt/keyrings/packages.mozilla.org.asc
+RUN gpg -n -q --import --import-options import-show /etc/apt/keyrings/packages.mozilla.org.asc | awk '/pub/{getline; gsub(/^ +| +$/,""); if($0 == "35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3") print "\nThe key fingerprint matches ("$0").\n"; else print "\nVerification failed: the fingerprint ("$0") does not match the expected one.\n"}'
+RUN echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" >> /etc/apt/sources.list.d/mozilla.list
+RUN echo "\n\
+Package: *\n\
+Pin: origin packages.mozilla.org\n\
+Pin-Priority: 1000\n\
+" > /etc/apt/preferences.d/mozilla
+RUN apt update; apt install -y firefox
+
+# configure desktop environment
+COPY config_files/tint2rc /home/user/.config/tint2/tint2rc
+COPY config_files/pekwm_startup /home/user/.pekwm/start
+
+# copy and prepare utils
+COPY utils/startup.sh /startup.sh
+
+# prepare user
+# idea taken from https://github.com/c0b/chrome-in-docker/
+RUN set -xe \
+    && useradd -G sudo --shell /bin/bash --home-dir /home/user --create-home user \
+    && cp -r /etc/skel/. /home/user/ \
+    && chown -R user /home/user \
+    && chgrp -R user /home/user \
+    && echo "user:$PASSWORD" | chpasswd \
+    && echo 'ALL ALL = (ALL:ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+CMD ["bash", "-c", "service ssh start && sleep infinity"]
+
