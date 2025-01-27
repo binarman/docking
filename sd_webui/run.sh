@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
-CONT_NAME="alefimov-sd-webui"
-IMG_NAME="alefimov-sd-webui-img"
+SCRIPT_DIR=$(dirname "$(realpath -s "$0")")
+source "$SCRIPT_DIR/config_files/user.config"
 
 help() {
   echo "Usage: run.sh [-h] [-n <container name>]"
@@ -19,11 +19,11 @@ done
 
 if ! docker start -ai "$CONT_NAME"; then
   if test -a /dev/kfd && test -a /dev/dri; then
-    docker run -it --network host --device /dev/kfd --device /dev/dri -v $HOME/sd-outputs:/stable-diffusion-webui/outputs --name "$CONT_NAME" "$IMG_NAME"
+    docker run -it --network host --device /dev/kfd --device /dev/dri -v $HOME/sd-outputs:/stable-diffusion-webui/outputs --name "$CONTAINER_NAME" "$IMAGE_NAME"
   else
     RED='\033[0;31m'
     NC='\033[0m' # No Color
     printf "${RED}RUNNING WITHOUT GPU${NC}\n"
-    docker run -it --network host -v $HOME/sd-outputs:/stable-diffusion-webui/outputs --name "$CONT_NAME" "$IMG_NAME"
+    docker run -it --network host -v $HOME/sd-outputs:/stable-diffusion-webui/outputs --name "$CONTAINER_NAME" "$IMAGE_NAME"
   fi
 fi
