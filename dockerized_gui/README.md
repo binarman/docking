@@ -8,16 +8,12 @@ sudo apt install xserver-xephyr bc sshpass
 
 ### HowTo
 
-To build image run `./make.sh` command
+Build image: `./make.sh`.
+Run container and attach Xephyr window by `./run.sh` command.
 
-Run container and attach Xephyr window by `./run.sh` command
+Once container is created it runs infinitely untill reboot or stopped explicitly, but rvery run creates separate X context and runns application in this context, so GUI application state is not between different runs.
 
 ### TODO
 
-- automate installation of citrix?
-- run container as a daemon
-- desktop icons?
-- list of running windows?
 - forward sound to host
-- is it possible to not drop x session and kill all applications?
-- configurable password
+- share clipboard between host and container

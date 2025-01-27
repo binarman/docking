@@ -29,3 +29,7 @@ Each  directory contains files
 ### OpenVPN
 
 [/openvpn](https://github.com/binarman/docking/tree/main/openvpn): container and scripts for simple open vpn deployment
+
+### Dockerized desktop
+
+[/dockerized_gui](https://github.com/binarman/docking/tree/main/dockerized_gui): infrastructure for minimal desktop running inside a container

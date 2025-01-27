@@ -20,4 +20,4 @@ while getopts ":hn:" option; do
   esac
 done
 
-docker build -t $IMAGE_NAME -f "$SCRIPT_DIR/config_files/dockerfile" --build-arg PASSWORD="$USER_PASSWORD" --build-arg DESKTOP_COLOR="$DESKTOP_COLOR" "$SCRIPT_DIR"
+docker build -t $IMAGE_NAME -f "$SCRIPT_DIR/config_files/dockerfile" --build-arg PASSWORD="$USER_PASSWORD" "$SCRIPT_DIR"
