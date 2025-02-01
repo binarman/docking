@@ -12,12 +12,12 @@ help() {
 while getopts ":hn:" option; do
   case $option in
     h)help; exit;;
-    n)CONT_NAME="$OPTARG";;
+    n)CONTAINER_NAME="$OPTARG";;
     ?)help; exit;;
   esac
 done
 
-if ! docker start -ai "$CONT_NAME"; then
+if ! docker start -ai "$CONTAINER_NAME"; then
   HAS_AMD_GPU=$(test -a /dev/kfd && test -a /dev/dri && echo 1)
   HAS_NVIDIA_GPU=$(test -a /dev/nvidia0 && echo 1)
   if [[ $HAS_AMD_GPU = 1 ]]; then
