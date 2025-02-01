@@ -21,3 +21,9 @@ while getopts ":hn:" option; do
 done
 
 docker build -t $IMAGE_NAME -f "$SCRIPT_DIR/config_files/dockerfile" --build-arg PASSWORD="$USER_PASSWORD" "$SCRIPT_DIR"
+
+cd $SCRIPT_DIR
+git submodule init
+git submodule update
+cd clipnotify
+make

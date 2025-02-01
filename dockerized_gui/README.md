@@ -1,10 +1,12 @@
 ### Prerequisites
 
-Install "Xephyr" nested x server, "bc" utility for some arithmetics and "sshpass":
+Install "Xephyr" nested x server, "bc" utility for some arithmetics, "sshpass" and "xclip":
 
 ```
-sudo apt install xserver-xephyr bc sshpass
+sudo apt install xserver-xephyr bc sshpass xclip
 ```
+
+Also note that make script will fetch external repository with clipboard tracking utility.
 
 ### HowTo
 

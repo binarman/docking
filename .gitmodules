@@ -1,0 +1,3 @@
+[submodule "dockerized_gui/clipnotify"]
+	path = dockerized_gui/clipnotify
+	url = https://github.com/cdown/clipnotify.git
