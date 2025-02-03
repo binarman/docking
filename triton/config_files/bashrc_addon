@@ -22,5 +22,9 @@ fi
 unset color_prompt
 
 MEM_SIZE=$(free --giga|grep Mem|sed -e 's/Mem: *\([0-9]*\).*/\1/')
-export MAX_JOBS=$(echo "$MEM_SIZE/8" | bc)
+CPU_NUMBER=$(cat /proc/cpuinfo |grep processor|wc -l)
+MAX_JOBS=$(( ($MEM_SIZE - 2)/3 ))
+MAX_JOBS=$(( $MAX_JOBS > $CPU_NUMBER ? $CPU_NUMBER : $MAX_JOBS ))
+MAX_JOBS=$(( $MAX_JOBS < 1 ? 1 : $MAX_JOBS ))
+export MAX_JOBS
 export ROCBLAS_INTERNAL_FP16_ALT_IMPL=0
