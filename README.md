@@ -33,3 +33,7 @@ Each  directory contains files
 ### Dockerized desktop
 
 [/dockerized_gui](https://github.com/binarman/docking/tree/main/dockerized_gui): infrastructure for minimal desktop running inside a container
+
+### Hugin
+
+[/pantools](https://github.com/binarman/docking/tree/main/pantools): workaround to run hug-in panorama stitching sw on distributions with no such package in repo

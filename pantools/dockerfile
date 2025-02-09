@@ -1,0 +1,15 @@
+FROM ubuntu:20.04
+
+ARG USER_ID
+
+RUN useradd -u $USER_ID --shell /bin/bash --home-dir /home/user --create-home user \
+    && cp -r /etc/skel/. /home/user/ \
+    && chown -R user /home/user \
+    && chgrp -R user /home/user
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt -y update && apt -y install hugin
+COPY xauth /home/user/.Xauthority
+
+USER user
+
