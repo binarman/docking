@@ -6,6 +6,8 @@ source "$SCRIPT_DIR/config_files/user.config"
 
 USER_PASSWORD="$DEFAULT_USER_PASSWORD"
 CONTAINER_NAME="$DEFAULT_CONTAINER_NAME"
+PA_GUEST_SERVER="/tmp/pulse/native"
+PA_GUEST_COOKIE="/home/user/.config/pulse/cookie"
 
 help() {
   echo "Usage: run.sh [-h] [-p <user password>] [<container name>]"
@@ -26,10 +28,23 @@ if [ "$1" ]; then
 fi
 
 if ! docker start "$CONTAINER_NAME"; then
-  docker run --detach --init --name "$CONTAINER_NAME" "$IMAGE_NAME"
+  docker run \
+    --detach \
+    --init \
+    --env PULSE_SERVER=$PA_GUEST_SERVER \
+    -v "$XDG_RUNTIME_DIR/pulse/native:$PA_GUEST_SERVER" \
+    --env PULSE_COOKIE=$PA_GUEST_COOKIE \
+    --name \
+    "$CONTAINER_NAME" \
+    "$IMAGE_NAME"
 fi
 
 CONTAINER_ADDR=$(docker inspect $CONTAINER_NAME|grep \"IPAddress\"|head -n 1|sed 's/.*: "\(.*\)".*/\1/')
+
+# copy pulse cookie
+echo "Copy pulse audio cookie on guest"
+docker cp "$HOME/.config/pulse/cookie" "$CONTAINER_NAME:$PA_GUEST_COOKIE"
+sshpass -p "$USER_PASSWORD" ssh -o StrictHostKeyChecking=no "user@$CONTAINER_ADDR" "sudo chown user $PA_GUEST_COOKIE"
 
 LAST_DISPLAY=$(ls /tmp/.X11-unix| sort | sed "s/X//" | tail -n 1)
 GUEST_DISPLAY=":$(echo "$LAST_DISPLAY + 1" | bc)"
@@ -61,12 +76,13 @@ function forward_x_selection {
   done
 }
 
+# TODO fix primary selection copy
 forward_x_selection "$HOST_DISPLAY" "$GUEST_DISPLAY" clipboard &
-forward_x_selection "$HOST_DISPLAY" "$GUEST_DISPLAY" primary &
+#forward_x_selection "$HOST_DISPLAY" "$GUEST_DISPLAY" primary &
 forward_x_selection "$GUEST_DISPLAY" "$HOST_DISPLAY" clipboard &
-forward_x_selection "$GUEST_DISPLAY" "$HOST_DISPLAY" primary &
+#forward_x_selection "$GUEST_DISPLAY" "$HOST_DISPLAY" primary &
 
 echo "Connecting to container on address $CONTAINER_ADDR"
 # remove previous records, because every container run will create new footprint
 ssh-keygen -f ~/.ssh/known_hosts -R "$CONTAINER_ADDR"
-sshpass -p "$USER_PASSWORD" ssh -o StrictHostKeyChecking=no -X "user@$CONTAINER_ADDR" "/startup.sh"
+sshpass -p "$USER_PASSWORD" ssh -o StrictHostKeyChecking=no -X "user@$CONTAINER_ADDR" "export PULSE_SERVER=$PA_GUEST_SERVER; export PULSE_COOKIE=$PA_GUEST_COOKIE; /startup.sh"
