@@ -1,5 +1,8 @@
 #!/usr/bin/bash
 
+# import environment varaibles, like MAX_JOBS
+source ~/.bashrc
+
 help() {
   echo "Usage: prepare_triton_repo.sh [-h] [-s] <path>"
   echo "     -h        : show help message"
@@ -63,5 +66,5 @@ DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e. --no-build-isolation 
 echo "] }" >> $VSCODE_SETTINGS
 
 rm -r ~/.triton/llvm_persistent
-cp -r ~/.triton/llvm/* ~/.triton/llvm_persistent
+cp -r ~/.triton/llvm/llvm-*-ubuntu-x64 ~/.triton/llvm_persistent
 
