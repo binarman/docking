@@ -11,8 +11,6 @@ help() {
   echo "   -s : use non default image suffix: amd, nvidia, nogpu"
 }
 
-CONT_NAME="$DEFAUL_CONTAINER_NAME"
-
 IMAGE_SUFFIX="$(get_device_suffix)"
 
 while getopts ":hn:s:" option; do
@@ -24,12 +22,31 @@ while getopts ":hn:s:" option; do
   esac
 done
 
+if [ -z "$CONT_NAME" ]; then
+  mapfile -t EXISTING_CONTAINERS < <(docker container ls -a | grep ${IMAGE_BASE_NAME} | rev | cut -d\  -f 1 | rev)
+  if [[ ${#EXISTING_CONTAINERS[@]} == 0 ]]; then
+    CONT_NAME="$DEFAUL_CONTAINER_NAME"
+  elif [[ ${#EXISTING_CONTAINERS[@]} == 1 ]]; then
+    CONT_NAME="${EXISTING_CONTAINERS[1]}"
+  else
+    select opt in ${EXISTING_CONTAINERS[@]}; do
+      if [ $opt ]; then
+        CONT_NAME="$opt"
+        break
+      fi
+      echo "please give a number within given limits"
+    done
+  fi
+fi
+
+echo "Running container: $CONT_NAME"
+
 IMAGE_NAME="${IMAGE_BASE_NAME}-${IMAGE_SUFFIX}"
 
 if ! docker start -ai "$CONT_NAME"; then
-  if [[ $HAS_AMD_GPU = 1 ]]; then
+  if [[ $HAS_AMD_GPU == 1 ]]; then
     docker run -it --network host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMAGE_NAME"
-  elif [[ $HAS_NVIDIA_GPU = 1 ]]; then
+  elif [[ $HAS_NVIDIA_GPU == 1 ]]; then
     docker run -it --network host --gpus all --name "$CONT_NAME" "$IMAGE_NAME"
   else
     RED='\033[0;31m'
