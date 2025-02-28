@@ -27,7 +27,7 @@ if [ -z "$CONT_NAME" ]; then
   if [[ ${#EXISTING_CONTAINERS[@]} == 0 ]]; then
     CONT_NAME="$DEFAUL_CONTAINER_NAME"
   elif [[ ${#EXISTING_CONTAINERS[@]} == 1 ]]; then
-    CONT_NAME="${EXISTING_CONTAINERS[1]}"
+    CONT_NAME="${EXISTING_CONTAINERS[0]}"
   else
     select opt in ${EXISTING_CONTAINERS[@]}; do
       if [ $opt ]; then
