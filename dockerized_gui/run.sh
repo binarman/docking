@@ -35,6 +35,9 @@ if [ "$1" ]; then
   CONTAINER_NAME="$1"
 fi
 
+# if receive terminating signal, kill all childrens first
+trap 'echo "run.sh received SIGINT or SIGTERM"; pkill -P $$' SIGINT SIGTERM
+
 
 echo "Start container"
 if ! docker start "$CONTAINER_NAME"; then
@@ -97,3 +100,7 @@ echo "Connecting to container on address $CONTAINER_ADDR"
 # remove previous records, because every container run will create new footprint
 ssh-keygen -f ~/.ssh/known_hosts -R "$CONTAINER_ADDR"
 sshpass -p "$USER_PASSWORD" ssh -o StrictHostKeyChecking=no -X "user@$CONTAINER_ADDR" "export PULSE_SERVER=$PA_GUEST_SERVER; export PULSE_COOKIE=$PA_GUEST_COOKIE; /startup.sh"
+
+
+echo "terminating child processes"
+pkill -g $$
