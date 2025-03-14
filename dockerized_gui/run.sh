@@ -8,25 +8,35 @@ USER_PASSWORD="$DEFAULT_USER_PASSWORD"
 CONTAINER_NAME="$DEFAULT_CONTAINER_NAME"
 PA_GUEST_SERVER="/tmp/pulse/native"
 PA_GUEST_COOKIE="/home/user/.config/pulse/cookie"
+SCREEN_SIZE="$DEFAULT_SCREEN_SIZE"
 
 help() {
   echo "Usage: run.sh [-h] [-p <user password>] [<container name>]"
   echo "   -h : show help message"
   echo "   -p : use non default password for user(default is \"${DEFAULT_USER_PASSWORD}\")"
+  echo "   -s : set screen size, default is \"${DEFAULT_SCREEN_SIZE}\")"
 }
 
-while getopts ":hn:" option; do
+while getopts ":hp:s:" option; do
   case $option in
     h)help; exit;;
     p)USER_PASSWORD="$OPTARG";;
+    s)SCREEN_SIZE="$OPTARG";;
     ?)help; exit;;
   esac
 done
+shift $((OPTIND-1))
+if ! echo "$SCREEN_SIZE" | grep -E '^[0-9]+x[0-9]+$'; then
+  echo "wrong format of sceen size, expected format looks like this: 1920x1080"
+  exit
+fi
 
 if [ "$1" ]; then
   CONTAINER_NAME="$1"
 fi
 
+
+echo "Start container"
 if ! docker start "$CONTAINER_NAME"; then
   docker run \
     --detach \
@@ -39,24 +49,24 @@ if ! docker start "$CONTAINER_NAME"; then
     "$IMAGE_NAME"
 fi
 
-CONTAINER_ADDR=$(docker inspect $CONTAINER_NAME|grep \"IPAddress\"|head -n 1|sed 's/.*: "\(.*\)".*/\1/')
 
-# copy pulse cookie
 echo "Copy pulse audio cookie on guest"
+CONTAINER_ADDR=$(docker inspect $CONTAINER_NAME|grep \"IPAddress\"|head -n 1|sed 's/.*: "\(.*\)".*/\1/')
 docker cp "$HOME/.config/pulse/cookie" "$CONTAINER_NAME:$PA_GUEST_COOKIE"
 sshpass -p "$USER_PASSWORD" ssh -o StrictHostKeyChecking=no "user@$CONTAINER_ADDR" "sudo chown user $PA_GUEST_COOKIE"
 
+
+echo "Setting up Xephyr on display $GUEST_DISPLAY"
 LAST_DISPLAY=$(ls /tmp/.X11-unix| sort | sed "s/X//" | tail -n 1)
 GUEST_DISPLAY=":$(echo "$LAST_DISPLAY + 1" | bc)"
-
-echo "Settingup Xephyr on display $GUEST_DISPLAY"
-Xephyr -screen 1920x1080 "$GUEST_DISPLAY"&
+Xephyr -screen $SCREEN_SIZE "$GUEST_DISPLAY"&
 HOST_DISPLAY="$DISPLAY"
 export DISPLAY="$GUEST_DISPLAY"
 while ! xset q; do
   echo "waiting for display to start"
   sleep 1
 done
+
 
 echo "Setting up clipboard forwarding between $HOST_DISPLAY and $GUEST_DISPLAY X displays"
 function forward_x_selection {
@@ -81,6 +91,7 @@ forward_x_selection "$HOST_DISPLAY" "$GUEST_DISPLAY" clipboard &
 #forward_x_selection "$HOST_DISPLAY" "$GUEST_DISPLAY" primary &
 forward_x_selection "$GUEST_DISPLAY" "$HOST_DISPLAY" clipboard &
 #forward_x_selection "$GUEST_DISPLAY" "$HOST_DISPLAY" primary &
+
 
 echo "Connecting to container on address $CONTAINER_ADDR"
 # remove previous records, because every container run will create new footprint
