@@ -15,7 +15,8 @@ Run container and attach Xephyr window by `./run.sh` command.
 
 Once container is created it runs infinitely untill reboot or stopped explicitly, but rvery run creates separate X context and runns application in this context, so GUI application state is not between different runs.
 
-### TODO
+### Known issues
 
-- forward sound to host
-- share clipboard between host and container
+- Sometimes while using mouse scrolling wheel, mouse stop responding. Need to press control and use mouse on top of Xephyr window.
+- Running windows are not shown on bottom panel
+- clipboard is copied in ping pong several times. This is not expected.
