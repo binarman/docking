@@ -3,7 +3,10 @@ FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 RUN apt update
 RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /stable-diffusion-webui
-RUN wget https://prompthero.com/ai-models/pony-diffusion-v6-xl-download/v6-1-5/file/208b8380-90d2-47dc-86a0-2ef3ec179f0a/download -O /stable-diffusion-webui/models/Stable-diffusion/pony_v6.safetensors
+RUN rm -r /stable-diffusion-webui/models/Stable-diffusion /stable-diffusion-webui/models/VAE
+RUN ln -s /models/stable-diffusion /stable-diffusion-webui/models/Stable-diffusion
+RUN ln -s /models/lora /stable-diffusion-webui/models/Lora
+RUN ln -s /models/vae /stable-diffusion-webui/models/VAE
 
 WORKDIR /stable-diffusion-webui
 
