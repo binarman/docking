@@ -1,13 +1,16 @@
 FROM rocm/pytorch
 
+COPY utils/startup.sh /tools/startup.sh
 RUN apt update
-RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0
-RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /stable-diffusion-webui
-RUN rm -r /stable-diffusion-webui/models/Stable-diffusion /stable-diffusion-webui/models/VAE
-RUN ln -s /models/stable-diffusion /stable-diffusion-webui/models/Stable-diffusion
-RUN ln -s /models/lora /stable-diffusion-webui/models/Lora
-RUN ln -s /models/vae /stable-diffusion-webui/models/VAE
+RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk
+RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /tools/stable-diffusion-webui
+RUN git clone https://github.com/bmaltais/kohya_ss /tools/kohya_ss
 
-WORKDIR /stable-diffusion-webui
+RUN rm -r /tools/stable-diffusion-webui/models/Stable-diffusion /tools/stable-diffusion-webui/models/VAE
+RUN ln -s /models/stable-diffusion /tools/stable-diffusion-webui/models/Stable-diffusion
+RUN ln -s /models/lora /tools/stable-diffusion-webui/models/Lora
+RUN ln -s /models/vae /tools/stable-diffusion-webui/models/VAE
 
-ENTRYPOINT ./webui.sh -f --listen
+WORKDIR /tools
+
+ENTRYPOINT /tools/startup.sh

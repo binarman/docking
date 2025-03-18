@@ -6,6 +6,7 @@ source "$SCRIPT_DIR/config_files/user.config"
 CONTAINER_NAME="$DEFAULT_CONTAINER_NAME"
 MODELS_PATH="$DEFAULT_MODELS_PATH"
 OUTPUT_PATH="$DEFAULT_OUTPUT_PATH"
+DATASET_PATH="$DEFAULT_DATASET_PATH"
 
 help() {
   echo "Usage: run.sh [-h] [-n <container name>]"
@@ -40,13 +41,14 @@ if ! docker start -ai "$CONTAINER_NAME"; then
   HAS_AMD_GPU=$(test -a /dev/kfd && test -a /dev/dri && echo 1)
   HAS_NVIDIA_GPU=$(test -a /dev/nvidia0 && echo 1)
   if [[ $HAS_AMD_GPU = 1 ]]; then
-    docker run -it --network host --device /dev/kfd --device /dev/dri -v "$OUTPUT_PATH":/stable-diffusion-webui/outputs -v "$MODELS_PATH":/models --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    docker run -it --network host --device /dev/kfd --device /dev/dri -v "$OUTPUT_PATH":/tools/stable-diffusion-webui/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
   elif [[ $HAS_NVIDIA_GPU = 1 ]]; then
-    docker run -it --network host --gpus all -v "$OUTPUT_PATH":/stable-diffusion-webui/outputs -v "$MODELS_PATH":/models --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    docker run -it --network host --gpus all -v "$OUTPUT_PATH":/tools/stable-diffusion-webui/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
   else
     RED='\033[0;31m'
     NC='\033[0m' # No Color
     printf "${RED}RUNNING WITHOUT GPU${NC}\n"
-    docker run -it --network host -v "$OUTPUT_PATH":/stable-diffusion-webui/outputs -v "$MODELS_PATH":/models --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    docker run -it --network host -v "$OUTPUT_PATH":/tools/stable-diffusion-webui/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
   fi
 fi
+
