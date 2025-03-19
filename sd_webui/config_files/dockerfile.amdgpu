@@ -1,6 +1,5 @@
 FROM rocm/pytorch
 
-COPY utils/startup.sh /tools/startup.sh
 RUN apt update
 RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /tools/stable-diffusion-webui
@@ -10,6 +9,7 @@ RUN rm -r /tools/stable-diffusion-webui/models/Stable-diffusion /tools/stable-di
 RUN ln -s /models/stable-diffusion /tools/stable-diffusion-webui/models/Stable-diffusion
 RUN ln -s /models/lora /tools/stable-diffusion-webui/models/Lora
 RUN ln -s /models/vae /tools/stable-diffusion-webui/models/VAE
+COPY utils/startup.sh /tools/startup.sh
 
 WORKDIR /tools
 
