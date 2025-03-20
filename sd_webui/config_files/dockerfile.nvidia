@@ -3,7 +3,7 @@ FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt update
-RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk
+RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk google-perftools bc
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /tools/stable-diffusion-webui
 RUN git clone https://github.com/bmaltais/kohya_ss /tools/kohya_ss
 
