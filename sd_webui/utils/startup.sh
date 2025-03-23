@@ -29,6 +29,7 @@ if [[ $INITIALIZE == 0 ]]; then
   echo "starting webui"
   /tools/stable-diffusion-webui/webui.sh -f --listen 2>&1 | tee /tmp/webui.log | grep "Startup time:"&
   echo "starting kohuya_ss"
+  source /tools/python_3.10_venv/bin/activate
   /tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser &> /tmp/kohuya.log&
 
   sleep inf
@@ -40,6 +41,11 @@ else
   source /tools/stable-diffusion-webui/venv/bin/activate
   pip install --upgrade huggingface_hub
   python /tools/download_hf_models.py
+
+  echo "initialize kohuya_ss environment"
+  python3.10 -m venv /tools/python_3.10_venv
+  source /tools/python_3.10_venv/bin/activate
+  /tools/kohuya_ss/setup.sh
 fi
 
 
