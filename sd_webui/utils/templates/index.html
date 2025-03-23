@@ -3,47 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Process Starter</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAdnJLH8AAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAZiS0dEAP8A/wD/oL2nkwAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+kDGhApIZGSAQQAAALaSURBVDjLXZNLaN1lEMV/M9//f19pmhvbVJPcYhtSK0G5NgrSqjRWBOtCEOqzlFpREF24cOWiG3eKUCi4KsGdCzF1U0GKFh80VpBoQuuDhlRKrXlUcx+57//3jYubaO1ZzeKcYebMGeEWnDhb3X+tZK+2Onag2kwGBSGf02WJo7OFrdGptyYy39zMl41i8rulzb/9kZu8XvaHDEMRRAysS/NiCML22/T0PXfay4f39JX/bXBqerV39or7ttT0RRBU5NbBMAuYASIMbJKfxwth75GH+isKMH/dfbha90VBUNkQGJghFgBQdagqmLG8ZmOXFt0kgLx3prJvdtGfF0BVSWngmWLMnp0x+U4JXERJe5lZaDE152l6CGYgxvhwvF9XavYGZogIWRc4/mSW+3dVqCa/Yue/hJkLzCwkjGyLOX4wTcb57t4Gi5Xwmra9HFBRRIRn74vZviVFw5epJkuknnqe+LGDbNms5LLC8ECKF4sOCIhBreUntNT0d7Du9u5CRKlSYyAzSvH2x0EEEMZ3xlz88QfKlTXuKkTQLCMk1FthUNe9wjDqjcCNmtLseLz3/91ajHvHRujt6SHxEJIGvlkimKE9qbBkZoDx0YU6v1+r8tXMMtNzK90IAP7qGbbVz+GcMnf5bwzBfEJOystRNnJflAmHDVioKFcuKr5RJzLjgbGtZNMRbvBROu02v8yvMDW7holhJqTVzmlf2j4Aw4IRzDBxaLqfjsHs5b8oVxvM/9nh0++rvP/5Ddo+gHW96ctGJwXg7U/Kp6+u2tNI6MYXUN/BN0qYTzAVBCMgiAlBYKgv/vjEsV3PKcDdw/bSwCYuYQqmAAQXo7k8zjlk/Rob4nxGf9oxKK8AKMDRvflKcYR9Q3mZAsXMgSmmMWT7QRwBRxBhKB9PPTiWnXjzidHq/75xA+9+VnpkZc29XmsnD9daVlCMbNxezFjz6960P/nOC6PTN/P/AX3aTsPjwz6KAAAAAElFTkSuQmCC">
+    <title>Process Controller</title>
 </head>
 <body>
     <h1>Start/stop server process</h1>
-    <button onclick="startProcess('webui')">Toggle SD WebUI</button>
-    <label id="webui_status"> Stopped </label>
-    <a id="webui_ref" href="http://127.0.0.1:7860">goto webui</a>
-    <br>
-    <button onclick="startProcess('kohya')">Toggle Kohua_ss</button>
-    <label id="kohya_status"> Stopped </label>
-    <a id="kohya_ref" href="http://127.0.0.1:7861">goto kohya_ss</a>
+    <div id="services-container">
+    </div>
 
     <script>
-        function toggleLabel(name, status) {
-          let status_label = document.getElementById(name + "_status");
-          let reference = document.getElementById(name + "_ref");
-          if (status) {
-            status_label.innerText = " Running ";
-            reference.style.visibility = "visible";
+        function updateServiceView(name, data) {
+          const btn = document.getElementById(name + "-btn")
+          const msg = document.getElementById(name + "-msg")
+          if (data.status != "STOPPED") {
+            btn.textContent = "Stop " + name;
           } else {
-            status_label.innerText = " Stopped ";
-            reference.style.visibility = "hidden";
+            btn.textContent = "Start " + name;
+          }
+          msg.textContent = data.message;
+        }
+
+        function reportServerError() {
+          console.error('Error loading service status:', error);
+        }
+
+        async function fetchInfo() {
+          const response = await fetch('/service/status', {method: 'POST'});
+
+          if (!response.ok) {
+            const message = 'Failed to fetch data from server';
+            reportServerError(message);
+            throw new Error(message);
+          }
+
+          return await response.json();
+        }
+
+        async function toggleProcess(name) {
+          const toggle_responce = await fetch('/service/toggle', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ service_name: name })
+          })
+          if (!toggle_responce.ok) {
+            reportServerError('Failed to request process toggle');
+            return;
+          }
+          const toggle_result = await toggle_responce.json();
+          if (!toggle_result.status) {
+            reportServerError('Failed to process toggle on server');
+            return;
+          }
+          try {
+            serviceInfo = await fetchInfo();
+            updateServiceView(name, serviceInfo[name]);
+          } catch (e) {
+            // DO NOTHING
           }
         }
 
-        function startProcess(name) {
-            fetch('/start_process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ service_name: name })
-            })
-            .then(response => response.json())
-            .then(data => toggleLabel(name, data.status))
-            .catch(error => console.error('Error:', error));
+        async function updateViews(services_status = null) {
+          try {
+            if (services_status === null) {
+              services_status = await fetchInfo();
+            }
+            for (const [serviceName, serviceInfo] of Object.entries(services_status)) {
+              updateServiceView(serviceName, serviceInfo);
+            }
+          } finally {
+            setTimeout(updateViews, 1000);
+          }
         }
 
-        function pageInit() {
+        async function pageInit() {
+          try {
+            const data = await fetchInfo();
+            const container = document.getElementById('services-container');
 
+            for (const [serviceName, serviceInfo] of Object.entries(data)) {
+              const serviceDiv = document.createElement('div');
+              serviceDiv.id = serviceName + '-div';
+
+              const button = document.createElement('button');
+              button.id = serviceName + '-btn';
+              button.addEventListener("click", () => toggleProcess(serviceName));
+
+              const label = document.createElement('label');
+              label.id = serviceName + '-msg';
+
+              serviceDiv.appendChild(button);
+              serviceDiv.appendChild(label);
+
+              container.appendChild(serviceDiv);
+            }
+            updateViews(data);
+          } catch (e) {
+            // DO NOTHING
+          }
         }
 
-        pageInit();
+        document.addEventListener('DOMContentLoaded', pageInit);
     </script>
 </body>
 </html>
