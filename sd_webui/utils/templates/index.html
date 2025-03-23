@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Starter</title>
+</head>
+<body>
+    <h1>Start/stop server process</h1>
+    <button onclick="startProcess('webui')">Toggle SD WebUI</button>
+    <label id="webui_status"> Stopped </label>
+    <a id="webui_ref" href="http://127.0.0.1:7860">goto webui</a>
+    <br>
+    <button onclick="startProcess('kohya')">Toggle Kohua_ss</button>
+    <label id="kohya_status"> Stopped </label>
+    <a id="kohya_ref" href="http://127.0.0.1:7861">goto kohya_ss</a>
+
+    <script>
+        function toggleLabel(name, status) {
+          let status_label = document.getElementById(name + "_status");
+          let reference = document.getElementById(name + "_ref");
+          if (status) {
+            status_label.innerText = " Running ";
+            reference.style.visibility = "visible";
+          } else {
+            status_label.innerText = " Stopped ";
+            reference.style.visibility = "hidden";
+          }
+        }
+
+        function startProcess(name) {
+            fetch('/start_process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service_name: name })
+            })
+            .then(response => response.json())
+            .then(data => toggleLabel(name, data.status))
+            .catch(error => console.error('Error:', error));
+        }
+
+        function pageInit() {
+
+        }
+
+        pageInit();
+    </script>
+</body>
+</html>
+
