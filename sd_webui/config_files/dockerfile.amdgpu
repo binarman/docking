@@ -9,6 +9,7 @@ RUN rm -r /tools/stable-diffusion-webui/models/Stable-diffusion /tools/stable-di
 RUN ln -s /models/stable-diffusion /tools/stable-diffusion-webui/models/Stable-diffusion
 RUN ln -s /models/lora /tools/stable-diffusion-webui/models/Lora
 RUN ln -s /models/vae /tools/stable-diffusion-webui/models/VAE
+RUN ln -s /models/huggingface /root/.cache/huggingface
 COPY utils/* /tools/
 RUN /tools/startup.sh --prepare-environment
 

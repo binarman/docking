@@ -29,12 +29,13 @@ done
 echo "Initializing directory with models"
 mkdir -p "$MODELS_PATH"
 if [ ! -d "$MODELS_PATH" ]; then
-  echo "failed to create directory with models, terminating"
+  echo "failed to create directory with models: $MODELS_PATH, terminating"
   exit 1
 fi
 mkdir -p "$MODELS_PATH/stable-diffusion"
 mkdir -p "$MODELS_PATH/lora"
 mkdir -p "$MODELS_PATH/vae"
+mkdir -p "$MODELS_PATH/huggingface"
 
 echo "Running $CONTAINER_NAME container"
 if ! docker start -ai "$CONTAINER_NAME"; then
