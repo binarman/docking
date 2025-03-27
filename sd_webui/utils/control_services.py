@@ -151,12 +151,11 @@ def status():
     statuses = {}
     for name in services:
         s = services[name]
-        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log()}
+        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": "\n".join(s.get_log())}
     return jsonify(statuses)
 
 if __name__ == '__main__':
     services["webui"] = Service("webui", '/tools/stable-diffusion-webui/webui.sh -f --listen', 'RUNNING goto http://127.0.0.1:7860', 'Startup')
     services["kohya"] = Service("kohya", '/tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser', 'RUNNING goto http://127.0.0.1:7861', 'Startup')
-    services["sleep"] = Service("sleep", "sleep 3; echo hello; sleep 3", "RUNNING", "hello")
     app.run(debug=True)
 

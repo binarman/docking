@@ -5,22 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAdnJLH8AAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAZiS0dEAP8A/wD/oL2nkwAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAd0SU1FB+kDGhApIZGSAQQAAALaSURBVDjLXZNLaN1lEMV/M9//f19pmhvbVJPcYhtSK0G5NgrSqjRWBOtCEOqzlFpREF24cOWiG3eKUCi4KsGdCzF1U0GKFh80VpBoQuuDhlRKrXlUcx+57//3jYubaO1ZzeKcYebMGeEWnDhb3X+tZK+2Onag2kwGBSGf02WJo7OFrdGptyYy39zMl41i8rulzb/9kZu8XvaHDEMRRAysS/NiCML22/T0PXfay4f39JX/bXBqerV39or7ttT0RRBU5NbBMAuYASIMbJKfxwth75GH+isKMH/dfbha90VBUNkQGJghFgBQdagqmLG8ZmOXFt0kgLx3prJvdtGfF0BVSWngmWLMnp0x+U4JXERJe5lZaDE152l6CGYgxvhwvF9XavYGZogIWRc4/mSW+3dVqCa/Yue/hJkLzCwkjGyLOX4wTcb57t4Gi5Xwmra9HFBRRIRn74vZviVFw5epJkuknnqe+LGDbNms5LLC8ECKF4sOCIhBreUntNT0d7Du9u5CRKlSYyAzSvH2x0EEEMZ3xlz88QfKlTXuKkTQLCMk1FthUNe9wjDqjcCNmtLseLz3/91ajHvHRujt6SHxEJIGvlkimKE9qbBkZoDx0YU6v1+r8tXMMtNzK90IAP7qGbbVz+GcMnf5bwzBfEJOystRNnJflAmHDVioKFcuKr5RJzLjgbGtZNMRbvBROu02v8yvMDW7holhJqTVzmlf2j4Aw4IRzDBxaLqfjsHs5b8oVxvM/9nh0++rvP/5Ddo+gHW96ctGJwXg7U/Kp6+u2tNI6MYXUN/BN0qYTzAVBCMgiAlBYKgv/vjEsV3PKcDdw/bSwCYuYQqmAAQXo7k8zjlk/Rob4nxGf9oxKK8AKMDRvflKcYR9Q3mZAsXMgSmmMWT7QRwBRxBhKB9PPTiWnXjzidHq/75xA+9+VnpkZc29XmsnD9daVlCMbNxezFjz6960P/nOC6PTN/P/AX3aTsPjwz6KAAAAAElFTkSuQmCC">
     <title>Process Controller</title>
+    <style>
+    pre {
+      height: 300px;
+      overflow: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background-color: #d8d8d8;
+      white-space: pre-wrap;
+    }
+    .service-div {
+      border: 2px solid #ccc;
+      padding: 20px;
+      background-color: #6397bc;
+    }
+  </style>
 </head>
 <body>
-    <h1>Start/stop server process</h1>
+    <h1>Server controls</h1>
     <div id="services-container">
     </div>
 
     <script>
         function updateServiceView(name, data) {
-          const btn = document.getElementById(name + "-btn")
-          const msg = document.getElementById(name + "-msg")
+          const btn = document.getElementById(name + '-btn')
+          const msg = document.getElementById(name + '-msg')
+          const log = document.getElementById(name + '-log')
           if (data.status != "STOPPED") {
             btn.textContent = "Stop " + name;
           } else {
             btn.textContent = "Start " + name;
           }
           msg.textContent = data.message;
+          log.innerHTML = "<code>" + data.log + "</code>";
         }
 
         function reportServerError() {
@@ -83,6 +100,7 @@
             for (const [serviceName, serviceInfo] of Object.entries(data)) {
               const serviceDiv = document.createElement('div');
               serviceDiv.id = serviceName + '-div';
+              serviceDiv.classList.add("service-div");
 
               const button = document.createElement('button');
               button.id = serviceName + '-btn';
@@ -91,8 +109,12 @@
               const label = document.createElement('label');
               label.id = serviceName + '-msg';
 
+              const log = document.createElement('pre');
+              log.id = serviceName + '-log';
+
               serviceDiv.appendChild(button);
               serviceDiv.appendChild(label);
+              serviceDiv.appendChild(log);
 
               container.appendChild(serviceDiv);
             }
