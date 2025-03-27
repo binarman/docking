@@ -6,17 +6,17 @@ RUN apt update
 RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk google-perftools bc
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /tools/stable-diffusion-webui
 RUN git clone --recursive https://github.com/bmaltais/kohya_ss /tools/kohya_ss
+RUN pip3 install flask
 
 RUN rm -r /tools/stable-diffusion-webui/models/Stable-diffusion /tools/stable-diffusion-webui/models/VAE
 RUN ln -s /models/stable-diffusion /tools/stable-diffusion-webui/models/Stable-diffusion
 RUN ln -s /models/lora /tools/stable-diffusion-webui/models/Lora
 RUN ln -s /models/vae /tools/stable-diffusion-webui/models/VAE
-RUN ln -s /models/huggingface /root/.cache/huggingface
 
 RUN ln -s /models/stable-diffusion /tools/kohya_ss/models/stable-diffusion
 RUN ln -s /dataset/ /tools/kohya_ss/external_dataset
 
-COPY utils/* /tools/
+COPY utils/ /tools/
 RUN /tools/startup.sh --prepare-environment
 
 WORKDIR /tools
