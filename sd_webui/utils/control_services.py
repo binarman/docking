@@ -42,6 +42,7 @@ class Service:
         self.watchdog = None
         self.lock = Lock()
         self.log = []
+        self.last_log_id = 0
 
     def get_status(self):
         return self.status
@@ -70,10 +71,11 @@ class Service:
             self.process = None
             self.status = ServiceStatus.STOPPED
             LOG("Service {} finished".format(self.name))
-            self.log += ["----==== FINISH ====----"]
+            self.log_line("----==== FINISH ====----")
 
     def log_line(self, line):
-        self.log += [line]
+        self.last_log_id += 1
+        self.log += [[self.last_log_id, line]]
         max_log_len = 1000
         self.log = self.log[-max_log_len:]
 
@@ -81,7 +83,7 @@ class Service:
         LOG("toggle process")
         if self.status == ServiceStatus.STOPPED:
             LOG("begin service start " + self.name)
-            self.log += ["----==== START ====----"]
+            self.log_line("----==== START ====----")
             self.process = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             self.status = ServiceStatus.STARTING
             if self.watchdog is not None:
@@ -92,7 +94,7 @@ class Service:
         else:
             with self.lock:
                 LOG("killing service " + self.name)
-                self.log += ["----==== ABORT ====----"]
+                self.log_line("----==== ABORT ====----")
                 self.status = ServiceStatus.ABORTING
                 self.process.kill()
                 # the rest of finalization will be done by notify_stopped method called from watchdog
@@ -113,7 +115,7 @@ def test_service_timeout():
     sleep(1.5)
     assert s.get_status() == ServiceStatus.STOPPED
     assert s.get_message() == "STOPPED"
-    assert s.get_log() == ["----==== START ====----", "hello", "----==== FINISH ====----"]
+    assert s.get_log() == [[1, "----==== START ====----"], [2, "hello"], [3, "----==== FINISH ====----"]]
 
 def test_service_abort():
     from time import sleep
@@ -129,7 +131,7 @@ def test_service_abort():
     sleep(1)
     assert s.get_status() == ServiceStatus.STOPPED
     assert s.get_message() == "STOPPED"
-    assert s.get_log() == ["----==== START ====----", "----==== ABORT ====----", "----==== FINISH ====----"]
+    assert s.get_log() == [[1, "----==== START ====----"], [2, "----==== ABORT ====----"], [3, "----==== FINISH ====----"]]
 
 @app.route('/')
 def index():
@@ -151,11 +153,12 @@ def status():
     statuses = {}
     for name in services:
         s = services[name]
-        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": "\n".join(s.get_log())}
+        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log()}
     return jsonify(statuses)
 
 if __name__ == '__main__':
     services["webui"] = Service("webui", '/tools/stable-diffusion-webui/webui.sh -f --listen --api', 'RUNNING goto http://127.0.0.1:7860', 'Startup time:')
     services["kohya"] = Service("kohya", '. /tools/python_3.10_venv/bin/activate; /tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser', 'RUNNING goto http://127.0.0.1:7861', 'Startup time:')
-    app.run(host="0.0.0.0", debug=True)
+    services["sleep"] = Service("sleep", "sleep 2; echo hello; echo '<br> &'; sleep 2", "RUNNING", "hello")
+    app.run(host="0.0.0.0", debug=True, port=8080)
 

@@ -27,6 +27,9 @@
     </div>
 
     <script>
+        // Used as a map from service name -> int
+        var last_log_id = new Object();
+
         function updateServiceView(name, data) {
           const btn = document.getElementById(name + '-btn')
           const msg = document.getElementById(name + '-msg')
@@ -37,7 +40,21 @@
             btn.textContent = "Start " + name;
           }
           msg.textContent = data.message;
-          log.innerHTML = "<code>" + data.log + "</code>";
+          for (let i = 0; i < data.log.length; i++) {
+            const log_no = data.log[i][0];
+            if (log_no <= last_log_id[name])
+              continue;
+            const log_data = data.log[i][1];
+            formatted_log_data = log_data.replace('&', '&amp;').replace('<', '&lt;');
+
+            const log_line = document.createElement('span');
+            log_line.innerHTML = formatted_log_data
+            const break_line = document.createElement('br');
+            log.appendChild(log_line);
+            log.appendChild(break_line);
+          }
+          if (data.log.length > 0)
+            last_log_id[name] = data.log[data.log.length - 1][0];
         }
 
         function reportServerError() {
@@ -109,14 +126,17 @@
               const label = document.createElement('label');
               label.id = serviceName + '-msg';
 
-              const log = document.createElement('pre');
+              const log_pre = document.createElement('pre');
+              const log = document.createElement('code');
               log.id = serviceName + '-log';
 
               serviceDiv.appendChild(button);
               serviceDiv.appendChild(label);
-              serviceDiv.appendChild(log);
+              serviceDiv.appendChild(log_pre);
+              log_pre.appendChild(log);
 
               container.appendChild(serviceDiv);
+              last_log_id[serviceName] = 0;
             }
             updateViews(data);
           } catch (e) {
