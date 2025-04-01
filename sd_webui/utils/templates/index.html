@@ -19,6 +19,23 @@
       padding: 20px;
       background-color: #6397bc;
     }
+    pre.log_listing {
+      white-space: pre-wrap;
+    }
+    pre.log_listing::before {
+      counter-reset: listing;
+    }
+    pre.log_listing code {
+      counter-increment: listing;
+    }
+    pre.log_listing code::before {
+      content: counter(listing) ". ";
+      display: inline-block;
+      width: 4em;
+      padding-left: auto;
+      margin-left: auto;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -47,11 +64,11 @@
             const log_data = data.log[i][1];
             formatted_log_data = log_data.replace('&', '&amp;').replace('<', '&lt;');
 
-            const log_line = document.createElement('span');
+            const log_line = document.createElement('code');
+            const line_break = document.createElement('br');
             log_line.innerHTML = formatted_log_data
-            const break_line = document.createElement('br');
             log.appendChild(log_line);
-            log.appendChild(break_line);
+            log.appendChild(line_break);
           }
           if (data.log.length > 0)
             last_log_id[name] = data.log[data.log.length - 1][0];
@@ -126,14 +143,13 @@
               const label = document.createElement('label');
               label.id = serviceName + '-msg';
 
-              const log_pre = document.createElement('pre');
-              const log = document.createElement('code');
+              const log = document.createElement('pre');
               log.id = serviceName + '-log';
+              log.classList.add("log_listing");
 
               serviceDiv.appendChild(button);
               serviceDiv.appendChild(label);
-              serviceDiv.appendChild(log_pre);
-              log_pre.appendChild(log);
+              serviceDiv.appendChild(log);
 
               container.appendChild(serviceDiv);
               last_log_id[serviceName] = 0;
