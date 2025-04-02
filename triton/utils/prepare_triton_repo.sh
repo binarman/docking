@@ -61,10 +61,6 @@ DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e. --no-build-isolation 
     sed 's/", "/",\n  "/g' |
     sed 's/DCMAKE_MAKE_PROGRAM=.*ninja/DCMAKE_MAKE_PROGRAM=ninja/' |
     sed 's/DPYBIND11_INCLUDE_DIR=.*include/DPYBIND11_INCLUDE_DIR=\/root\/.triton\/pybind11\/pybind11-2.13.1\/include\//' |
-    sed 's/llvm\/llvm-.*include/llvm_persistent\/include/' |
-    sed 's/llvm\/llvm-.*lib/llvm_persistent\/lib/' >> $VSCODE_SETTINGS
+    sed 's/llvm\/llvm-.*include/llvm\/llvm-ubuntu-x64\/include/' |
+    sed 's/llvm\/llvm-.*lib/llvm\/llvm-ubuntu-x64\/lib/' >> $VSCODE_SETTINGS
 echo "] }" >> $VSCODE_SETTINGS
-
-rm -r ~/.triton/llvm_persistent
-cp -r ~/.triton/llvm/llvm-*-ubuntu-x64 ~/.triton/llvm_persistent
-
