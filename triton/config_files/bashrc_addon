@@ -28,3 +28,5 @@ MAX_JOBS=$(( $MAX_JOBS > $CPU_NUMBER ? $CPU_NUMBER : $MAX_JOBS ))
 MAX_JOBS=$(( $MAX_JOBS < 1 ? 1 : $MAX_JOBS ))
 export MAX_JOBS
 export ROCBLAS_INTERNAL_FP16_ALT_IMPL=0
+
+PATH="/opt/rocm/bin/:$PATH"

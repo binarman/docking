@@ -8,7 +8,7 @@ help() {
   echo "Usage: run.sh [-h] [-n <container name>]"
   echo "   -h : show help message"
   echo "   -n : use non default container name"
-  echo "   -s : use non default image suffix: amd, nvidia, nogpu"
+  echo "   -s : use specific image type: amd, amd_pytorch, nvidia, nogpu"
 }
 
 IMAGE_SUFFIX="$(get_device_suffix)"

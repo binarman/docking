@@ -1,0 +1,25 @@
+FROM rocm/pytorch:rocm6.3.4_ubuntu24.04_py3.12_pytorch_release_2.4.0
+
+ARG USER_NAME
+ARG USER_EMAIL
+ARG INITIAL_TRITON_BRANCH
+
+COPY config_files/bashrc_addon /root/bashrc_addon
+COPY config_files/vimrc /root/.vimrc
+COPY config_files/bash_aliases /root/.bash_aliases
+
+COPY utils /utils
+
+RUN apt -y update
+RUN apt -y -f install
+RUN apt -y install less strace wget psmisc gdb bc
+RUN git config --global user.name "$USER_NAME"
+RUN git config --global user.email "$USER_EMAIL"
+RUN pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja
+
+# Initialize bashrc
+RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
+
+WORKDIR /triton
+ENTRYPOINT /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash
+

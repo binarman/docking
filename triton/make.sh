@@ -10,7 +10,7 @@ IMAGE_SUFFIX="$(get_device_suffix)"
 help() {
   echo "Usage: make.sh [-h] [-s <override image suffix>]"
   echo "   -h : show help message"
-  echo "   -s : use non default image suffix: amd, nvidia, nogpu"
+  echo "   -s : use specific image type: amd, amd_pytorch, nvidia, nogpu"
 }
 
 while getopts ":hs:" option; do

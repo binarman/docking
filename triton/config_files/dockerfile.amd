@@ -1,8 +1,23 @@
-FROM rocm/pytorch:rocm6.3.4_ubuntu24.04_py3.12_pytorch_release_2.4.0
+FROM ubuntu:24.04
 
 ARG USER_NAME
 ARG USER_EMAIL
 ARG INITIAL_TRITON_BRANCH
+
+RUN apt -y update
+RUN apt -y -f install
+RUN apt -y install less strace wget psmisc gdb bc python3-pip python3-venv git vim
+RUN git config --global user.name "$USER_NAME"
+RUN git config --global user.email "$USER_EMAIL"
+RUN python3 -m venv /opt/python_venv
+RUN . /opt/python_venv/bin/activate;\
+    pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja setuptools cmake;\
+    pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2.4
+RUN wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/noble/amdgpu-install_6.3.60303-1_all.deb;\
+    apt install ./amdgpu-install_6.3.60303-1_all.deb;\
+    rm ./amdgpu-install_6.3.60303-1_all.deb;\
+    apt -y update;\
+    apt -y install rocm-smi rocminfo
 
 COPY config_files/bashrc_addon /root/bashrc_addon
 COPY config_files/vimrc /root/.vimrc
@@ -10,16 +25,9 @@ COPY config_files/bash_aliases /root/.bash_aliases
 
 COPY utils /utils
 
-RUN apt -y update
-RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb bc
-RUN git config --global user.name "$USER_NAME"
-RUN git config --global user.email "$USER_EMAIL"
-RUN pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pip==21.0 pybind11 ninja
-
 # Initialize bashrc
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
 
 WORKDIR /triton
-ENTRYPOINT /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash
+ENTRYPOINT export VIRTUAL_ENV_DISABLE_PROMPT=1; . /opt/python_venv/bin/activate; /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash
 

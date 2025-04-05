@@ -51,6 +51,8 @@ if [ -a build ] && [[ $SKIP = 1 ]]; then
   exit
 fi
 
+echo "Building triton in path: ${FULL_REPO_PATH}, branch ${BRANCH_NAME}, using ${MAX_JOBS} threads"
+
 VSCODE_SETTINGS="$FULL_REPO_PATH/.vscode/settings.json"
 mkdir "$FULL_REPO_PATH/.vscode"
 echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
