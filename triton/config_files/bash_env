@@ -29,3 +29,4 @@ export MAX_JOBS
 export ROCBLAS_INTERNAL_FP16_ALT_IMPL=0
 
 PATH="/opt/rocm/bin/:$PATH"
+export CXX=clang++
