@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 # import environment varaibles, like MAX_JOBS
-source ~/.bashrc
+source ~/bash_env
 
 help() {
   echo "Usage: prepare_triton_repo.sh [-h] [-s] <path>"

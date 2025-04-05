@@ -19,14 +19,15 @@ RUN wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/noble/amdgpu-instal
     apt -y update;\
     apt -y install rocm-smi rocminfo
 
-COPY config_files/bashrc_addon /root/bashrc_addon
+COPY config_files/bash_env /root/bash_env
 COPY config_files/vimrc /root/.vimrc
 COPY config_files/bash_aliases /root/.bash_aliases
 
 COPY utils /utils
 
 # Initialize bashrc
-RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
+RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back > /root/.bashrc
+RUN echo "source ~/bash_env" >> /root/.bashrc
 
 WORKDIR /triton
 ENTRYPOINT export VIRTUAL_ENV_DISABLE_PROMPT=1; . /opt/python_venv/bin/activate; /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash

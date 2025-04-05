@@ -23,7 +23,8 @@ RUN pip3 install numpy==1.26.4 pandas matplotlib pre-commit lit pytest pybind11 
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # Initialize bashrc
-RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
+RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back > /root/.bashrc
+RUN echo "source ~/bash_env" >> /root/.bashrc
 
 WORKDIR /triton
 ENTRYPOINT /utils/prepare_triton_repo.sh -s -b "$INITIAL_TRITON_BRANCH" /triton; bash
