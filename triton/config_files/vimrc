@@ -6,3 +6,4 @@ set autoindent
 set list
 set expandtab
 set shiftwidth=2
+colorscheme elflord
