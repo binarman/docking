@@ -83,7 +83,11 @@
         }
 
         async function fetchInfo() {
-          const response = await fetch('/service/status', {method: 'POST'});
+          const response = await fetch('/service/status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json'},
+              body: JSON.stringify(last_log_id)
+          });
 
           if (!response.ok) {
             const message = 'Failed to fetch data from server';
@@ -97,9 +101,9 @@
         async function toggleProcess(name) {
           const toggle_responce = await fetch('/service/toggle', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json'},
               body: JSON.stringify({ service_name: name })
-          })
+          });
           if (!toggle_responce.ok) {
             reportServerError('Failed to request process toggle');
             return;

@@ -60,8 +60,11 @@ class Service:
         else:
             return "INTERNAL ERROR"
 
-    def get_log(self):
-        return self.log
+    def get_log(self, starting_from_id = 0):
+        if starting_from_id == 0:
+            return self.log
+        else:
+            return [[idx, message] for idx, message in self.log if idx >= starting_from_id]
 
     def notify_started(self):
         LOG("Service {} started".format(self.name))
@@ -84,12 +87,15 @@ class Service:
         with self.lock:
             if self.process is None:
                 return 0
-            root_service_process = psutil.Process(self.process.pid)
-            whole_tree = root_service_process.children(recursive=True) + [root_service_process]
-            total_rss = 0
-            for p in whole_tree:
-                total_rss += p.memory_info().rss
-            return total_rss
+            try:
+                root_service_process = psutil.Process(self.process.pid)
+                whole_tree = root_service_process.children(recursive=True) + [root_service_process]
+                total_rss = 0
+                for p in whole_tree:
+                    total_rss += p.memory_info().rss
+                return total_rss
+            except:
+                return 0
 
     def toggle(self):
         LOG("toggle process")
@@ -162,10 +168,16 @@ def toggle_service():
 @app.route('/service/status', methods=['POST'])
 def status():
     LOG("request: service status")
+    last_log_id = request.json
+    LOG("requested update starting from log ids: {}".format(last_log_id))
     statuses = {}
     for name in services:
         s = services[name]
-        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(), "rss": s.get_memory_consumption()}
+        if not name in last_log_id:
+            starting_log_id = 0
+        else:
+            starting_log_id = last_log_id[name] + 1
+        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "rss": s.get_memory_consumption()}
     return jsonify(statuses)
 
 if __name__ == '__main__':
