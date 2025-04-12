@@ -54,8 +54,9 @@
           let messageContent = ""
           if (data.status != "STOPPED") {
             btn.textContent = "Stop " + name;
-            let rssGB = (data.rss/(1024*1024*1024)).toFixed(2);
-            messageContent = "RAM consumption: " + rssGB + " GB " + data.message;
+            let RAMGB = (data.memory.ram/(1024*1024*1024)).toFixed(2);
+            let VRAMGB = (data.memory.vram/(1024*1024*1024)).toFixed(2);
+            messageContent = "RAM: " + RAMGB + " GB; " + "VRAM: " + VRAMGB + " GB; " + data.message;
           } else {
             btn.textContent = "Start " + name;
             messageContent = data.message;

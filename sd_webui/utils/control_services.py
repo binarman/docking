@@ -86,16 +86,28 @@ class Service:
     def get_memory_consumption(self):
         with self.lock:
             if self.process is None:
-                return 0
+                return {"ram": 0, "vram": 0}
             try:
                 root_service_process = psutil.Process(self.process.pid)
                 whole_tree = root_service_process.children(recursive=True) + [root_service_process]
                 total_rss = 0
+                service_pids = set()
                 for p in whole_tree:
                     total_rss += p.memory_info().rss
-                return total_rss
+                    service_pids.add(p.pid)
+                total_vram = 0
+                try:
+                    import nvsmi
+                    gpu_processes = nvsmi.get_gpu_processes()
+                    for gpu_p in gpu_processes:
+                        if gpu_p.pid in service_pids:
+                            total_vram += gpu_p.used_memory * 1024 * 1024
+                except:
+                    LOG("Failed to gather NVidia GPU info")
+                    pass
+                return {"ram": total_rss, "vram": total_vram}
             except:
-                return 0
+                return {"ram": 0, "vram": 0}
 
     def toggle(self):
         LOG("toggle process")
@@ -130,6 +142,7 @@ def test_service_timeout():
     sleep(1.5)
     assert s.get_status() == ServiceStatus.RUNNING
     assert s.get_message() == "RUNNING"
+    assert s.get_memory_consumption()["ram"] > 0
     sleep(1.5)
     assert s.get_status() == ServiceStatus.STOPPED
     assert s.get_message() == "STOPPED"
@@ -150,6 +163,8 @@ def test_service_abort():
     assert s.get_status() == ServiceStatus.STOPPED
     assert s.get_message() == "STOPPED"
     assert s.get_log() == [[1, "----==== START ====----"], [2, "----==== ABORT ====----"], [3, "----==== FINISH ====----"]]
+    assert s.get_log(3) == [[3, "----==== FINISH ====----"]]
+    assert s.get_memory_consumption() == {"ram": 0, "vram": 0}
 
 @app.route('/')
 def index():
@@ -177,7 +192,7 @@ def status():
             starting_log_id = 0
         else:
             starting_log_id = last_log_id[name] + 1
-        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "rss": s.get_memory_consumption()}
+        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "memory": s.get_memory_consumption()}
     return jsonify(statuses)
 
 if __name__ == '__main__':
