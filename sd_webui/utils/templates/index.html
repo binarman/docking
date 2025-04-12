@@ -51,12 +51,15 @@
           const btn = document.getElementById(name + '-btn')
           const msg = document.getElementById(name + '-msg')
           const log = document.getElementById(name + '-log')
+          let messageContent = ""
           if (data.status != "STOPPED") {
             btn.textContent = "Stop " + name;
+            messageContent = "RAM consumption: " + data.rss/(1024*1024*1024) + " GB " + data.message;
           } else {
             btn.textContent = "Start " + name;
+            messageContent = data.message;
           }
-          msg.textContent = data.message;
+          msg.textContent = messageContent;
           for (let i = 0; i < data.log.length; i++) {
             const log_no = data.log[i][0];
             if (log_no <= last_log_id[name])

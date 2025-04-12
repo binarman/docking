@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import subprocess
+import psutil
 from enum import Enum
 from threading import Thread, Lock
 
@@ -14,7 +15,7 @@ class ServiceStatus(Enum):
     RUNNING = 3
     ABORTING = 4
 
-class Watchdog(Thread):
+class StreamWatchdog(Thread):
     def __init__(self, data_stream, start_token: str, service: object):
         Thread.__init__(self)
         self.stream = data_stream
@@ -79,6 +80,17 @@ class Service:
         max_log_len = 1000
         self.log = self.log[-max_log_len:]
 
+    def get_memory_consumption(self):
+        with self.lock:
+            if self.process is None:
+                return 0
+            root_service_process = psutil.Process(self.process.pid)
+            whole_tree = root_service_process.children(recursive=True) + [root_service_process]
+            total_rss = 0
+            for p in whole_tree:
+                total_rss += p.memory_info().rss
+            return total_rss
+
     def toggle(self):
         LOG("toggle process")
         if self.status == ServiceStatus.STOPPED:
@@ -88,7 +100,7 @@ class Service:
             self.status = ServiceStatus.STARTING
             if self.watchdog is not None:
                 self.watchdog.join()
-            self.watchdog = Watchdog(self.process.stdout, self.start_marker, self)
+            self.watchdog = StreamWatchdog(self.process.stdout, self.start_marker, self)
             self.watchdog.start()
             LOG("finish service start")
         else:
@@ -153,11 +165,11 @@ def status():
     statuses = {}
     for name in services:
         s = services[name]
-        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log()}
+        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(), "rss": s.get_memory_consumption()}
     return jsonify(statuses)
 
 if __name__ == '__main__':
     services["webui"] = Service("webui", '/tools/stable-diffusion-webui/webui.sh -f --listen --api', 'RUNNING goto http://127.0.0.1:7860', 'Startup time:')
     services["kohya"] = Service("kohya", '. /tools/python_3.10_venv/bin/activate; /tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser', 'RUNNING goto http://127.0.0.1:7861', 'Startup time:')
-    app.run(host="0.0.0.0", debug=True, port=8080)
+    app.run(host="0.0.0.0", debug=True, port=5000)
 
