@@ -6,20 +6,39 @@ ARG INITIAL_TRITON_BRANCH
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb bc python3-pip python3-venv git vim clang
+RUN apt -y install less strace wget psmisc gdb bc python3-pip python3-venv git vim clang gpg
 RUN git config --global user.name "$USER_NAME"
 RUN git config --global user.email "$USER_EMAIL"
 RUN python3 -m venv /opt/python_venv
 RUN . /opt/python_venv/bin/activate;\
     pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja setuptools cmake;\
     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2.4
-RUN wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/noble/amdgpu-install_6.3.60303-1_all.deb;\
-    apt install ./amdgpu-install_6.3.60303-1_all.deb;\
-    rm ./amdgpu-install_6.3.60303-1_all.deb;\
-    apt -y update;\
-    apt -y install rocm-smi rocminfo
 
-COPY config_files/bash_env /root/bash_env
+# Registering rocm repository and installing packages
+# instruction from https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/install-methods/package-manager/package-manager-ubuntu.html
+
+# Make the directory if it doesn't exist yet.
+# This location is recommended by the distribution maintainers.
+RUN mkdir --parents --mode=0755 /etc/apt/keyrings
+
+# Download the key, convert the signing-key to a full
+# keyring required by apt and store in the keyring directory55 /etc/apt/keyrings
+RUN wget https://repo.radeon.com/rocm/rocm.gpg.key -O - | gpg --dearmor > /etc/apt/keyrings/rocm.gpg
+
+# Register kernel-mode driver
+RUN echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/amdgpu/6.4/ubuntu jammy main" > /etc/apt/sources.list.d/amdgpu.list
+RUN apt update
+
+# Register ROCm packages
+RUN echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.4 noble main" >> /etc/apt/sources.list.d/rocm.list
+RUN echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' > /etc/apt/preferences.d/rocm-pin-600
+RUN apt update
+
+RUN apt -y install rocm-smi rocminfo rocprofiler
+
+# END of ROCM related layers
+
+copy config_files/bash_env /root/bash_env
 COPY config_files/vimrc /root/.vimrc
 COPY config_files/bash_aliases /root/.bash_aliases
 
