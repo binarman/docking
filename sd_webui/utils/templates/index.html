@@ -79,6 +79,18 @@
             last_log_id[name] = data.log[data.log.length - 1][0];
         }
 
+        function updateSystemView(data) {
+          const system_div = document.getElementById('system-div');
+          let contents = '';
+          for (const [resourceName, used, total] of data) {
+            let usedGB = (used/(1024*1024*1024)).toFixed(2);
+            let totalGB = (total/(1024*1024*1024)).toFixed(2);
+            contents += resourceName + ': ' + usedGB + ' / ' + totalGB + ' GB used';
+            contents += '<br>';
+          }
+          system_div.innerHTML = contents;
+        }
+
         function reportServerError() {
           console.error('Error loading service status:', error);
         }
@@ -127,7 +139,10 @@
             if (services_status === null) {
               services_status = await fetchInfo();
             }
+            updateSystemView(services_status.system);
             for (const [serviceName, serviceInfo] of Object.entries(services_status)) {
+              if (serviceName == 'system')
+                continue;
               updateServiceView(serviceName, serviceInfo);
             }
           } finally {
@@ -140,7 +155,16 @@
             const data = await fetchInfo();
             const container = document.getElementById('services-container');
 
-            for (const [serviceName, serviceInfo] of Object.entries(data)) {
+            const systemDiv = document.createElement('div');
+            systemDiv.id = 'system-div';
+            systemDiv.classList.add("service-div");
+            container.appendChild(systemDiv);
+
+            const services = Object.entries(data);
+            for (const [serviceName, serviceInfo] of services) {
+              if (serviceName == 'system') {
+                continue;
+              }
               const serviceDiv = document.createElement('div');
               serviceDiv.id = serviceName + '-div';
               serviceDiv.classList.add("service-div");

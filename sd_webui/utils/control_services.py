@@ -1,10 +1,7 @@
-from flask import Flask, render_template, request, jsonify
 import subprocess
 import psutil
 from enum import Enum
 from threading import Thread, Lock
-
-app = Flask(__name__)
 
 def LOG(message):
   print("* CONTROL LOG: " + message)
@@ -129,7 +126,7 @@ class Service:
                 self.process.kill()
                 # the rest of finalization will be done by notify_stopped method called from watchdog
 
-services={}
+# Tests for service class
 
 def test_service_timeout():
     from time import sleep
@@ -166,6 +163,31 @@ def test_service_abort():
     assert s.get_log(3) == [[3, "----==== FINISH ====----"]]
     assert s.get_memory_consumption() == {"ram": 0, "vram": 0}
 
+# System mamangement
+
+def get_system_status():
+    resources = []
+    ram = psutil.virtual_memory()
+    resources += [["RAM", ram.total - ram.available, ram.total]]
+    try:
+        import nvsmi
+        for gpu in nvsmi.get_gpus():
+            gpu_name = "{} {} VRAM".format(gpu.name, gpu.id)
+            gpu_total = gpu.mem_total * 1024 * 1024
+            gpu_free = gpu.mem_free * 1024 * 1024
+            resources += [[gpu_name, gpu_total - gpu_free, gpu_total]]
+    except:
+        LOG("Can not get nvidia gpu system info")
+    return resources
+
+# Web server part
+
+from flask import Flask, render_template, request, jsonify
+
+app = Flask(__name__)
+
+services={}
+
 @app.route('/')
 def index():
     LOG("request: fetching page")
@@ -193,6 +215,8 @@ def status():
         else:
             starting_log_id = last_log_id[name] + 1
         statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "memory": s.get_memory_consumption()}
+    statuses["system"] = get_system_status()
+    print(statuses)
     return jsonify(statuses)
 
 if __name__ == '__main__':
