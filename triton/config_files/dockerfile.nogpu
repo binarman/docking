@@ -4,7 +4,7 @@ ARG USER_NAME
 ARG USER_EMAIL
 ARG INITIAL_TRITON_BRANCH
 
-COPY config_files/bashrc_addon /root/bashrc_addon
+copy config_files/bash_env /root/bash_env
 COPY config_files/vimrc /root/.vimrc
 COPY config_files/bash_aliases /root/.bash_aliases
 
