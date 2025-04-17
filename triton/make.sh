@@ -22,6 +22,9 @@ while getopts ":hs:" option; do
 done
 
 IMAGE_NAME="${IMAGE_BASE_NAME}-${IMAGE_SUFFIX}"
+IMAGE_TAG="$(date +'%S%M%H-%d-%m-%Y')"
 
-docker build -t "$IMAGE_NAME" -f "$SCRIPT_DIR"/config_files/dockerfile.${IMAGE_SUFFIX} --build-arg USER_NAME="$USER_NAME" --build-arg USER_EMAIL="$USER_EMAIL" --build-arg INITIAL_TRITON_BRANCH="$INITIAL_TRITON_BRANCH" "$SCRIPT_DIR"
+docker build -t "$IMAGE_NAME:$IMAGE_TAG" -f "$SCRIPT_DIR"/config_files/dockerfile.${IMAGE_SUFFIX} --build-arg USER_NAME="$USER_NAME" --build-arg USER_EMAIL="$USER_EMAIL" --build-arg INITIAL_TRITON_BRANCH="$INITIAL_TRITON_BRANCH" "$SCRIPT_DIR"
+
+docker image tag "$IMAGE_NAME:$IMAGE_TAG" "$IMAGE_NAME:latest"
 
