@@ -23,7 +23,7 @@ while getopts ":hn:s:" option; do
 done
 
 if [ -z "$CONT_NAME" ]; then
-  mapfile -t EXISTING_CONTAINERS < <(docker container ls -a | grep ${IMAGE_BASE_NAME} | rev | cut -d\  -f 1 | rev)
+  mapfile -t EXISTING_CONTAINERS < <(docker container ls -a --filter "label=triton_env=dev" | tail +2 | rev | cut -d\  -f 1 | rev)
   if [[ ${#EXISTING_CONTAINERS[@]} == 0 ]]; then
     CONT_NAME="$DEFAUL_CONTAINER_NAME"
   elif [[ ${#EXISTING_CONTAINERS[@]} == 1 ]]; then

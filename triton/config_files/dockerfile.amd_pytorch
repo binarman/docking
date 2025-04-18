@@ -1,5 +1,7 @@
 FROM rocm/pytorch:rocm6.3.4_ubuntu24.04_py3.12_pytorch_release_2.4.0
 
+LABEL triton_env="dev"
+
 ARG USER_NAME
 ARG USER_EMAIL
 ARG INITIAL_TRITON_BRANCH
