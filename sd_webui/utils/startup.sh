@@ -33,12 +33,14 @@ else
   LAUNCH_SCRIPT="dummy_launcher'" /tools/stable-diffusion-webui/webui.sh -f
   source /tools/stable-diffusion-webui/venv/bin/activate
   pip install --upgrade huggingface_hub
-  python /tools/download_hf_models.py
+  python /tools/download_hf_models.py openai/clip-vit-large-patch14
   deactivate
 
   echo "initialize kohuya_ss environment"
   python3.10 -m venv /tools/python_3.10_venv
   source /tools/python_3.10_venv/bin/activate
+  pip3 install --upgrade huggingface_hub
+  python3.10 /tools/download_hf_models.py laion/CLIP-ViT-bigG-14-laion2B-39B-b160k
   /tools/kohya_ss/setup.sh
 fi
 
