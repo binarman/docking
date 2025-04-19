@@ -7,7 +7,7 @@ RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk 
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /tools/stable-diffusion-webui
 RUN git clone --recursive https://github.com/bmaltais/kohya_ss /tools/kohya_ss
 RUN git clone https://github.com/binarman/auto-sd-paint-ext /tools/stable-diffusion-webui/extensions/auto-sd-paint-ext
-RUN pip3 install flask nvsmi
+RUN pip3 install flask nvsmi pyte
 
 RUN rm -r /tools/stable-diffusion-webui/models/Stable-diffusion /tools/stable-diffusion-webui/models/VAE
 RUN ln -s /models/stable-diffusion /tools/stable-diffusion-webui/models/Stable-diffusion

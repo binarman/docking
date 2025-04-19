@@ -2,6 +2,7 @@ import subprocess
 import psutil
 from enum import Enum
 from threading import Thread, Lock
+import pyte
 
 def LOG(message):
   print("* CONTROL LOG: " + message)
@@ -39,6 +40,7 @@ class Service:
         self.start_marker = start_marker
         self.watchdog = None
         self.lock = Lock()
+        self.max_history_len = 1000
         self.log = []
         self.last_log_id = 0
 
@@ -75,10 +77,18 @@ class Service:
             self.log_line("----==== FINISH ====----")
 
     def log_line(self, line):
+        # do not want to trim anything from input, give enough space for processing
+        tty_columns = len(line) + 1
+        # emulate just one line, and add it to log after
+        tty_rows = 1
+        tty_screen = pyte.Screen(tty_columns, tty_rows)
+        tty_stream = pyte.Stream(tty_screen)
+        tty_stream.feed(line)
+
         self.last_log_id += 1
-        self.log += [[self.last_log_id, line]]
-        max_log_len = 1000
-        self.log = self.log[-max_log_len:]
+        processed_line = tty_screen.display[0].rstrip()
+        self.log += [[self.last_log_id, processed_line]]
+        self.log = self.log[-self.max_history_len:]
 
     def get_memory_consumption(self):
         with self.lock:
@@ -216,7 +226,6 @@ def status():
             starting_log_id = last_log_id[name] + 1
         statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "memory": s.get_memory_consumption()}
     statuses["system"] = get_system_status()
-    print(statuses)
     return jsonify(statuses)
 
 if __name__ == '__main__':
