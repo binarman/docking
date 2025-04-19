@@ -3,6 +3,8 @@ import psutil
 from enum import Enum
 from threading import Thread, Lock
 import pyte
+import os
+import signal
 
 def LOG(message):
   print("* CONTROL LOG: " + message)
@@ -133,7 +135,11 @@ class Service:
                 LOG("killing service " + self.name)
                 self.log_line("----==== ABORT ====----")
                 self.status = ServiceStatus.ABORTING
-                self.process.kill()
+
+                root_service_process = psutil.Process(self.process.pid)
+                whole_tree = root_service_process.children(recursive=True) + [root_service_process]
+                for p in whole_tree:
+                    os.kill(p.pid, signal.SIGTERM)
                 # the rest of finalization will be done by notify_stopped method called from watchdog
 
 # Tests for service class
