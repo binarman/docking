@@ -30,3 +30,4 @@ export ROCBLAS_INTERNAL_FP16_ALT_IMPL=0
 
 PATH="/opt/rocm/bin/:$PATH"
 export CXX=clang++
+export TRITON_HIP_LLD_PATH=/root/.triton/llvm/llvm-ubuntu-x64/bin/ld.lld
