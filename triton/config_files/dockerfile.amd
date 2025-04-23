@@ -8,7 +8,7 @@ ARG INITIAL_TRITON_BRANCH
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb bc python3-pip python3-venv git vim clang gpg ninja-build
+RUN apt -y install less strace wget psmisc gdb bc python3-pip python3-venv git vim clang gpg ninja-build cmake
 RUN git config --global user.name "$USER_NAME"
 RUN git config --global user.email "$USER_EMAIL"
 RUN python3 -m venv /opt/python_venv
