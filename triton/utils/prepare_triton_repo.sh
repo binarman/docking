@@ -45,19 +45,17 @@ if [ ! -e "$FULL_REPO_PATH/README.md" ]; then
   pre-commit install
 fi
 
-cd "$FULL_REPO_PATH/python"
-
 if [ -a build ] && [[ $SKIP = 1 ]]; then
   exit
 fi
 
-echo "Building triton in path: ${FULL_REPO_PATH}, branch ${BRANCH_NAME}, using ${MAX_JOBS} threads"
+echo "Building triton in path: ${FULL_REPO_PATH}, branch $(git branch --show-current), using ${MAX_JOBS} threads"
 
 VSCODE_SETTINGS="$FULL_REPO_PATH/.vscode/settings.json"
 mkdir "$FULL_REPO_PATH/.vscode"
 echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
 ESCAPED_REPO_PATH=$(echo "$FULL_REPO_PATH" | sed 's/\//\\\//')
-DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e. --no-build-isolation 2>&1 >/dev/null |
+DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e . --no-build-isolation 2>&1 >/dev/null |
     grep "\"cmake\", \"$FULL_REPO_PATH\"" |
     sed "s/.*\[\"cmake\", \"$ESCAPED_REPO_PATH\", \(.*\)\].*/\1/" |
     sed 's/", "/",\n  "/g' |
