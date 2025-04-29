@@ -42,6 +42,13 @@ else
   pip3 install --upgrade huggingface_hub
   python3.10 /tools/download_hf_models.py laion/CLIP-ViT-bigG-14-laion2B-39B-b160k
   /tools/kohya_ss/setup.sh
-fi
+  deactivate
 
+  echo "initialize ComfyUI environment"
+  python3.12 -m venv /tools/python_3.12_venv
+  source /tools/python_3.12_venv/bin/activate
+  pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu128
+  pip install -r /tools/ComfyUI/requirements.txt
+  deactivate
+fi
 
