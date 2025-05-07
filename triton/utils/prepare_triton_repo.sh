@@ -54,7 +54,7 @@ echo "Building triton in path: ${FULL_REPO_PATH}, branch $(git branch --show-cur
 VSCODE_SETTINGS="$FULL_REPO_PATH/.vscode/settings.json"
 mkdir "$FULL_REPO_PATH/.vscode"
 echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
-ESCAPED_REPO_PATH=$(echo "$FULL_REPO_PATH" | sed 's/\//\\\//')
+ESCAPED_REPO_PATH=$(echo "$FULL_REPO_PATH" | sed 's/\//\\\//g')
 DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e . --no-build-isolation 2>&1 >/dev/null |
     grep "\"cmake\", \"$FULL_REPO_PATH\"" |
     sed "s/.*\[\"cmake\", \"$ESCAPED_REPO_PATH\", \(.*\)\].*/\1/" |
