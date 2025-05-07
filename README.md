@@ -4,13 +4,7 @@ Collection of docker files and utilities I use for development.
 
 ### Triton
 
-- [/triton/](https://github.com/binarman/docking/tree/main/triton/amd): development infrastructure for OpenAI Triton on AMD and Nvidia hardware
-- [/triton/config_files](https://github.com/binarman/docking/tree/main/triton/config_files): configuration and dockerfiles files for dev environment
-- [/triton/utils](https://github.com/binarman/docking/tree/main/triton/utils): common scripts for triton related containers
-
-Each  directory contains files
-- `make.sh` : script for composing docker image with development environment. Created image has name `alefimov-triton-img`
-- `run.sh`  : script for creating or restarting existing container created on previous step. Default name of container is `alefimov-triton`, could be changed with `-n <custom name>` option
+- [/triton/](https://github.com/binarman/docking/tree/main/triton): development infrastructure for OpenAI Triton on AMD and Nvidia hardware
 
 ### Meeting alert
 

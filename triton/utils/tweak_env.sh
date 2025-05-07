@@ -1,22 +1,25 @@
 #!/usr/bin/bash
 
-git clone --depth 1 https://github.com/binarman/docking /docking
+git clone --depth 1 https://github.com/binarman/docking /tmp/docking
 
-cp /docking/triton/config_files/bashrc_addon /root/bashrc_addon
-cp /docking/triton/config_files/vimrc /root/.vimrc
-cp /docking/triton/config_files/bash_aliases /root/.bash_aliases
+cp /tmp/docking/triton/config_files/bash_env "${HOME}/bash_env"
+cp /tmp/docking/triton/config_files/vimrc "${HOME}/.vimrc"
+cp /tmp/docking/triton/config_files/bash_aliases "${HOME}/.bash_aliases"
 
-cp -r /docking/triton/utils /utils
+sudo cp -r /tmp/docking/triton/utils /utils
 
-apt -y update
-apt -y -f install
-apt -y install less strace wget psmisc gdb
+sudo apt -y update
+sudo apt -y -f install
+sudo apt -y install less strace wget psmisc gdb python3-pip python3-venv
 git config --global user.name "Alexander Efimov"
 git config --global user.email "efimov.alexander@gmail.com"
+python3 -m venv "${HOME}/python_venv"
+source "${HOME}/python_venv/bin/activate"
 pip3 install pandas matplotlib pre-commit lit
 
 # Initialize bashrc
-mv /root/.bashrc /root/bashrc.back
-echo "force_color_prompt=yes" | cat - /root/bashrc.back /root/bashrc_addon > /root/.bashrc
+mv "${HOME}/.bashrc" "${HOME}/bashrc.back"
+echo "force_color_prompt=yes" | cat - "${HOME}/bashrc.back" > "${HOME}/.bashrc"
+echo "source ~/bash_env" >> "${HOME}/.bashrc"
 
-rm -rf /docking
+rm -rf /tmp/docking
