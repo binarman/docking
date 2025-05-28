@@ -23,6 +23,8 @@ RUN ln -s /dataset/ /tools/kohya_ss/external_dataset
 
 RUN rm -r /tools/ComfyUI/models/diffusion_models /tools/ComfyUI/models/loras /tools/ComfyUI/models/vae
 RUN ln -s /models/stable-diffusion /tools/ComfyUI/models/diffusion_models
+RUN ln -s /models/stable-diffusion /tools/ComfyUI/models/checkpoints/
+RUN ln -s /models/flux/ /tools/ComfyUI/models/checkpoints/
 RUN ln -s /models/lora /tools/ComfyUI/models/loras
 RUN ln -s /models/vae /tools/ComfyUI/models/vae
 
