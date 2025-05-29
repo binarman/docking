@@ -186,18 +186,25 @@
               const log = document.createElement('pre');
               log.id = serviceName + '-log';
               log.classList.add("log_listing");
+              const log_summary = document.createElement('summary');
+              log_summary.innerHTML = 'Service log';
 
               const autoscroll_input = document.createElement('input');
               autoscroll_input.id = serviceName + '-autoscroll';
               autoscroll_input.type = 'checkbox';
+              autoscroll_input.checked = true;
               const autoscroll_label = document.createElement('label');
               autoscroll_label.innerHTML = "log autoscroll";
 
+              const log_detail = document.createElement('details');
+              log_detail.appendChild(log_summary);
+              log_detail.appendChild(log);
+              log_detail.appendChild(autoscroll_input);
+              log_detail.appendChild(autoscroll_label);
+
               serviceDiv.appendChild(button);
               serviceDiv.appendChild(label);
-              serviceDiv.appendChild(log);
-              serviceDiv.appendChild(autoscroll_input);
-              serviceDiv.appendChild(autoscroll_label);
+              serviceDiv.appendChild(log_detail);
 
               container.appendChild(serviceDiv);
               last_log_id[serviceName] = 0;
