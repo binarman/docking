@@ -25,9 +25,6 @@ Pin-Priority: 1000\n\
 " > /etc/apt/preferences.d/mozilla
 RUN apt update; apt install -y firefox
 
-# configure desktop environment
-# TBD
-
 # copy and prepare utils
 COPY utils/startup.sh /startup.sh
 
@@ -40,6 +37,9 @@ RUN set -xe \
     && chgrp -R user /home/user \
     && echo "user:$PASSWORD" | chpasswd \
     && echo 'ALL ALL = (ALL:ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+# configure desktop environment
+COPY config_files/fluxbox_menu /home/user/.fluxbox/menu
 
 CMD ["bash", "-c", "service ssh start && sleep infinity"]
 
