@@ -5,6 +5,5 @@ trap 'echo "startup script received SIGINT or SIGTERM"; pkill -P $$' SIGINT SIGT
 # if one child dies(for example, x session is closed), kill all the others
 trap 'echo "startup script received SIGCHLD"; pkill -P $$' SIGCHLD
 
-pekwm&
-tint2&
+fluxbox&
 sleep infinity & wait

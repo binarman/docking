@@ -5,7 +5,7 @@ ARG PASSWORD
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt update
-RUN apt install -y sudo wget gpg xterm xutils pekwm openssh-server thunar tint2
+RUN apt install -y sudo wget gpg xterm xutils openssh-server thunar fluxbox
 
 RUN apt install --fix-missing -y pulseaudio
 
@@ -26,8 +26,7 @@ Pin-Priority: 1000\n\
 RUN apt update; apt install -y firefox
 
 # configure desktop environment
-COPY config_files/tint2rc /home/user/.config/tint2/tint2rc
-COPY config_files/pekwm_startup /home/user/.pekwm/start
+# TBD
 
 # copy and prepare utils
 COPY utils/startup.sh /startup.sh
