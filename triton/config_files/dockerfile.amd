@@ -13,7 +13,7 @@ RUN git config --global user.name "$USER_NAME"
 RUN git config --global user.email "$USER_EMAIL"
 RUN python3 -m venv /opt/python_venv
 RUN . /opt/python_venv/bin/activate;\
-    pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja setuptools cmake pytest;\
+    pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja setuptools cmake pytest pytest-xdist;\
     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2.4;\
     pip3 uninstall --yes pytorch-triton-rocm
 
