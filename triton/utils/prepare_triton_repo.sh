@@ -43,6 +43,8 @@ if [ ! -e "$FULL_REPO_PATH/README.md" ]; then
   git remote add rocm https://github.com/ROCm/triton
   git fetch rocm
   pre-commit install
+else
+  cd "$FULL_REPO_PATH"
 fi
 
 if [ -a build ] && [[ $SKIP = 1 ]]; then
@@ -52,7 +54,7 @@ fi
 echo "Building triton in path: ${FULL_REPO_PATH}, branch $(git branch --show-current), using ${MAX_JOBS} threads"
 
 VSCODE_SETTINGS="$FULL_REPO_PATH/.vscode/settings.json"
-mkdir "$FULL_REPO_PATH/.vscode"
+mkdir -p "$FULL_REPO_PATH/.vscode"
 echo "{\"cmake.configureArgs\" : [" > $VSCODE_SETTINGS
 ESCAPED_REPO_PATH=$(echo "$FULL_REPO_PATH" | sed 's/\//\\\//g')
 DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e . --no-build-isolation 2>&1 >/dev/null |
