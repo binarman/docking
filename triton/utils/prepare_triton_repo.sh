@@ -5,19 +5,21 @@ source ~/bash_env
 
 help() {
   echo "Usage: prepare_triton_repo.sh [-h] [-s] <path>"
-  echo "     -h        : show help message"
-  echo "     -s        : skip build if python/build dir exists"
-  echo "     -b <name> : name of branch to checkout before build"
-  echo "     <path>    : path where to fetch and build triton"
+  echo "     -h          : show help message"
+  echo "     -s          : skip build if python/build dir exists"
+  echo "     -b <name>   : name of branch to checkout before build"
+  echo "     -j <number> : override default number of workers"
+  echo "     <path>      : path where to fetch and build triton"
 }
 
 SKIP=0
 BRANCH_NAME=""
-while getopts ":hsb:" option; do
+while getopts ":hsb:j:" option; do
   case $option in
     h)help; exit;;
     s)SKIP=1;;
     b)BRANCH_NAME="$OPTARG";;
+    j)MAX_JOBS="$OPTARG";;
     ?)help; exit;;
   esac
 done
