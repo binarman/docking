@@ -45,13 +45,13 @@ IMAGE_NAME="${IMAGE_BASE_NAME}-${IMAGE_SUFFIX}"
 
 if ! docker start -ai "$CONT_NAME"; then
   if [[ $HAS_AMD_GPU == 1 ]]; then
-    docker run -it --network host -v ~/container_shared:/host --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMAGE_NAME"
+    docker run -it --network host -v ~/container_shared:/host --cap-add SYS_NICE --device /dev/kfd --device /dev/dri --name "$CONT_NAME" "$IMAGE_NAME"
   elif [[ $HAS_NVIDIA_GPU == 1 ]]; then
-    docker run -it --network host -v ~/container_shared:/host --gpus all --name "$CONT_NAME" "$IMAGE_NAME"
+    docker run -it --network host -v ~/container_shared:/host --cap-add SYS_NICE --gpus all --name "$CONT_NAME" "$IMAGE_NAME"
   else
     RED='\033[0;31m'
     NC='\033[0m' # No Color
     printf "${RED}RUNNING WITHOUT GPU${NC}\n"
-    docker run -it --network host -v ~/container_shared:/host --name "$CONT_NAME" "$IMAGE_NAME"
+    docker run -it --network host -v ~/container_shared:/host --cap-add SYS_NICE --name "$CONT_NAME" "$IMAGE_NAME"
   fi
 fi

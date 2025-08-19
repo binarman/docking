@@ -14,7 +14,7 @@ COPY utils /utils
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install less strace wget psmisc gdb bc vim
+RUN apt -y install less strace wget psmisc gdb bc vim numactl
 RUN git config --global user.name "$USER_NAME"
 RUN git config --global user.email "$USER_EMAIL"
 RUN pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja
