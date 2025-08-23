@@ -1,32 +1,30 @@
 FROM ubuntu:24.04
 
-ARG CA_PASSPHRASE
 ARG SERVER_IP_ADDR
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt -y update
 RUN apt -y -f install
-RUN apt -y install openvpn easy-rsa iproute2
+RUN apt -y install openvpn easy-rsa iproute2 dnsmasq
 
 # Configuring Certificate Authority (Steps 1 && 2)
 RUN mkdir /easy-rsa
 RUN ln -s /usr/share/easy-rsa/* /easy-rsa/
 COPY config_files/easy_rsa_vars /easy-rsa/vars
-RUN cd /easy-rsa; ./easyrsa init-pki
-RUN cd /easy-rsa; echo -e "$CA_PASSPHRASE\n$CA_PASSPHRASE\n\n" | ./easyrsa build-ca; ./easyrsa build-ca nopass
+RUN cd /easy-rsa; ./easyrsa init-pki; echo -e "\n" | ./easyrsa build-ca nopass
 
 # Configuring server certificate (Steps 3 && 4)
 RUN cd /easy-rsa; echo -e "\n" | ./easyrsa gen-req vpn-server nopass
 RUN cp /easy-rsa/pki/private/vpn-server.key /etc/openvpn/server/
 # RUN cd /easy-rsa; ./easyrsa import-req /easy-rsa/pki/reqs/vpn-server.req vpn-server
-RUN cd /easy-rsa; echo -e "yes\n$CA_PASSPHRASE\n" | ./easyrsa sign-req server vpn-server
+RUN cd /easy-rsa; echo "yes" | ./easyrsa sign-req server vpn-server
 RUN cp /easy-rsa/pki/issued/vpn-server.crt /etc/openvpn/server/
 RUN cp /easy-rsa/pki/ca.crt /etc/openvpn/server/
 
 # OpenVPN cyptography setup (Step 5)
 
-RUN cd ~/easy-rsa; openvpn --genkey --secret ta.key; cp ta.key /etc/openvpn/server
+RUN cd /easy-rsa; openvpn --genkey --secret ta.key; cp ta.key /etc/openvpn/server
 
 # Skip client configuration, it is done later in runtime (Step 6)
 
@@ -45,8 +43,7 @@ RUN sysctl -p
 
 # Start OpenVPN (Step 10)
 
-RUN systemctl -f enable openvpn-server@server.service
-RUN systemctl start openvpn-server@server.service
+# Skip since server is run inside docker container manually, no systemd is involved
 
 # Prepare infrastructure for client management (Step 11)
 
@@ -54,5 +51,7 @@ RUN mkdir -p /client-configs/files
 RUN mkdir -p /client-configs/keys
 
 COPY config_files/client_base.conf /client-configs/client_base.conf
-RUN echo "remote $SERVER_IP_ADDR 443" >> /client_base.conf
+RUN echo -e "\nremote $SERVER_IP_ADDR 443" >> /client-configs/client_base.conf
+
 COPY utils/add_client.sh /utils/add_client.sh
+COPY utils/startup.sh /utils/startup.sh

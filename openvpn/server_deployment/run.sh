@@ -19,9 +19,18 @@ while getopts ":hn:" option; do
   esac
 done
 
-echo "INITIALIZING ufw firewall"
-sudo apt -y install ufw
-sudo ufw allow 443
-sudo ufw enable
+if ! which ufw; then
+  echo "INSTALLING ufw firewall"
+  sudo apt -y install ufw
+fi
 
-docker run -it --network host --name "$CONT_NAME" "$IMAGE_NAME" --restart unless-stopped
+if ! sudo ufw status | grep 443 | grep ALLOW; then
+  echo "INITIALIZING firewall"
+  sudo ufw allow 443
+  sudo ufw enable
+fi
+
+if ! docker start "$CONT_NAME"; then
+  echo "Starting new container"
+  docker run -d --network host --name "$CONT_NAME" --cap-add=NET_ADMIN --restart unless-stopped "$IMAGE_NAME" /bin/sh -c "/utils/startup.sh"
+fi
