@@ -32,5 +32,5 @@ fi
 
 if ! docker start "$CONT_NAME"; then
   echo "Starting new container"
-  docker run -d --network host --name "$CONT_NAME" --cap-add=NET_ADMIN --restart unless-stopped "$IMAGE_NAME" /bin/sh -c "/utils/startup.sh"
+  docker run -d -p 443:443 --name "$CONT_NAME" --cap-add=NET_ADMIN --restart unless-stopped "$IMAGE_NAME" /bin/sh -c "/utils/startup.sh"
 fi
