@@ -6,7 +6,7 @@ RUN apt update
 RUN apt install -y wget git python3 python3-venv libgl1 libglib2.0-0 python3-tk google-perftools bc software-properties-common
 RUN add-apt-repository ppa:deadsnakes/ppa -y
 RUN apt update
-RUN apt install python3.12 python3.12-venv
+RUN apt install -y python3.12 python3.12-venv
 RUN pip3 install flask nvsmi pyte
 
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui /tools/stable-diffusion-webui
@@ -17,16 +17,19 @@ RUN rm -r /tools/stable-diffusion-webui/models/Stable-diffusion /tools/stable-di
 RUN ln -s /models/stable-diffusion /tools/stable-diffusion-webui/models/Stable-diffusion
 RUN ln -s /models/lora /tools/stable-diffusion-webui/models/Lora
 RUN ln -s /models/vae /tools/stable-diffusion-webui/models/VAE
+RUN ln -s /outputs/webui /tools/stable-diffusion-webui/outputs
 
 RUN ln -s /models/stable-diffusion /tools/kohya_ss/models/stable-diffusion
 RUN ln -s /dataset/ /tools/kohya_ss/external_dataset
 
-RUN rm -r /tools/ComfyUI/models/diffusion_models /tools/ComfyUI/models/loras /tools/ComfyUI/models/vae
+RUN rm -r /tools/ComfyUI/models/diffusion_models /tools/ComfyUI/models/loras /tools/ComfyUI/models/vae /tools/ComfyUI/output
 RUN ln -s /models/stable-diffusion /tools/ComfyUI/models/diffusion_models
 RUN ln -s /models/stable-diffusion /tools/ComfyUI/models/checkpoints/
 RUN ln -s /models/flux/ /tools/ComfyUI/models/checkpoints/
 RUN ln -s /models/lora /tools/ComfyUI/models/loras
 RUN ln -s /models/vae /tools/ComfyUI/models/vae
+RUN ln -s /models/controlnet /tools/ComfyUI/models/controlnet
+RUN ln -s /outputs/comfy /tools/ComfyUI/output
 
 COPY utils/ /tools/
 RUN /tools/startup.sh --prepare-environment
