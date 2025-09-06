@@ -41,18 +41,18 @@ mkdir -p "$OUTPUT_PATH/comfy"
 mkdir -p "$OUTPUT_PATH/webui"
 
 echo "Running $CONTAINER_NAME container"
-if ! docker start -ai "$CONTAINER_NAME"; then
+if ! docker start "$CONTAINER_NAME"; then
   HAS_AMD_GPU=$(test -a /dev/kfd && test -a /dev/dri && echo 1)
   HAS_NVIDIA_GPU=$(test -a /dev/nvidia0 && echo 1)
   if [[ $HAS_AMD_GPU = 1 ]]; then
-    docker run -it --network host --pid=host --device /dev/kfd --device /dev/dri -v "$OUTPUT_PATH":/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    docker run -d --restart unless-stopped --network host --pid=host --device /dev/kfd --device /dev/dri -v "$OUTPUT_PATH":/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
   elif [[ $HAS_NVIDIA_GPU = 1 ]]; then
-    docker run -it --network host --pid=host --gpus all -v "$OUTPUT_PATH":/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    docker run -d --restart unless-stopped --network host --pid=host --gpus all -v "$OUTPUT_PATH":/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
   else
     RED='\033[0;31m'
     NC='\033[0m' # No Color
     printf "${RED}RUNNING WITHOUT GPU${NC}\n"
-    docker run -it --network host --pid=host -v "$OUTPUT_PATH":/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
+    docker run -d --restart unless-stopped --network host --pid=host -v "$OUTPUT_PATH":/outputs -v "$MODELS_PATH":/models -v "$DATASET_PATH":/dataset --name "$CONTAINER_NAME" "$IMAGE_NAME"
   fi
 fi
 

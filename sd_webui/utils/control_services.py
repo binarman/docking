@@ -218,6 +218,12 @@ def toggle_service():
     services[name].toggle()
     return jsonify({"status": True})
 
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    LOG("request: shutdown")
+    os.kill(os.getpid(), signal.SIGINT)
+    return jsonify({ "success": True, "message": "Server is shutting down..." })
+
 @app.route('/service/status', methods=['POST'])
 def status():
     LOG("request: service status")

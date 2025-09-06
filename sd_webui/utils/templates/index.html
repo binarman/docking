@@ -14,10 +14,20 @@
       background-color: #d8d8d8;
       white-space: pre-wrap;
     }
-    .service-div {
+    .system-div {
+      border: 2px solid #ccc;
+      padding: 20px;
+      background-color: #5080ac;
+    }
+    .service-div-stopped {
       border: 2px solid #ccc;
       padding: 20px;
       background-color: #6397bc;
+    }
+    .service-div-running {
+      border: 2px solid #ccc;
+      padding: 20px;
+      background-color: #63bc97;
     }
     pre.log_listing {
       white-space: pre-wrap;
@@ -51,15 +61,18 @@
           const btn = document.getElementById(name + '-btn');
           const msg = document.getElementById(name + '-msg');
           const log = document.getElementById(name + '-log');
+          const div = document.getElementById(name + '-div');
           let messageContent = "";
           if (data.status != "STOPPED") {
             btn.textContent = "Stop " + name;
             let RAMGB = (data.memory.ram/(1024*1024*1024)).toFixed(2);
             let VRAMGB = (data.memory.vram/(1024*1024*1024)).toFixed(2);
             messageContent = "RAM: " + RAMGB + " GB; " + "VRAM: " + VRAMGB + " GB; " + data.message;
+            div.className = "service-div-running";
           } else {
             btn.textContent = "Start " + name;
             messageContent = data.message;
+            div.className = "service-div-stopped";
           }
           msg.textContent = messageContent;
           let log_updated = false;
@@ -87,7 +100,7 @@
         }
 
         function updateSystemView(data) {
-          const system_div = document.getElementById('system-div');
+          const system_status_div = document.getElementById('system-status-div');
           let contents = '';
           for (const [resourceName, used, total] of data) {
             let usedGB = (used/(1024*1024*1024)).toFixed(2);
@@ -95,7 +108,7 @@
             contents += resourceName + ': ' + usedGB + ' / ' + totalGB + ' GB used';
             contents += '<br>';
           }
-          system_div.innerHTML = contents;
+          system_status_div.innerHTML = contents;
         }
 
         function reportServerError() {
@@ -141,6 +154,14 @@
           }
         }
 
+        async function restartContainer() {
+          const toggle_responce = await fetch('/shutdown', {method: 'POST'});
+          if (!toggle_responce.ok) {
+            reportServerError('Failed to request container restart');
+            return;
+          }
+        }
+
         async function updateViews(services_status = null) {
           try {
             if (services_status === null) {
@@ -162,10 +183,18 @@
             const data = await fetchInfo();
             const container = document.getElementById('services-container');
 
-            const systemDiv = document.createElement('div');
-            systemDiv.id = 'system-div';
-            systemDiv.classList.add("service-div");
-            container.appendChild(systemDiv);
+            const system_div = document.createElement('div');
+            system_div.id = 'system-div';
+            system_div.classList.add("system-div");
+            container.appendChild(system_div);
+            const system_status_div = document.createElement('div');
+            system_status_div.id = 'system-status-div';
+            system_div.appendChild(system_status_div);
+
+            const restart_button = document.createElement('button');
+            restart_button.textContent = "Restart all services";
+            restart_button.addEventListener("click", () => restartContainer());
+            system_div.appendChild(restart_button)
 
             const services = Object.entries(data);
             for (const [serviceName, serviceInfo] of services) {
@@ -174,7 +203,7 @@
               }
               const serviceDiv = document.createElement('div');
               serviceDiv.id = serviceName + '-div';
-              serviceDiv.classList.add("service-div");
+              serviceDiv.classList.add("service-div-stopped");
 
               const button = document.createElement('button');
               button.id = serviceName + '-btn';
