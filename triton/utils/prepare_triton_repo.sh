@@ -64,7 +64,5 @@ DEBUG=1 strace -f -e trace=execve -s 1000 pip3 install -e . --no-build-isolation
     sed "s/.*\[\"cmake\", \"$ESCAPED_REPO_PATH\", \(.*\)\].*/\1/" |
     sed 's/", "/",\n  "/g' |
     sed 's/DCMAKE_MAKE_PROGRAM=.*ninja/DCMAKE_MAKE_PROGRAM=ninja/' |
-    sed 's/DPYBIND11_INCLUDE_DIR=.*include/DPYBIND11_INCLUDE_DIR=\/root\/.triton\/pybind11\/pybind11-2.13.1\/include\//' |
-    sed 's/llvm\/llvm-.*include/llvm\/llvm-ubuntu-x64\/include/' |
-    sed 's/llvm\/llvm-.*lib/llvm\/llvm-ubuntu-x64\/lib/' >> $VSCODE_SETTINGS
+    sed -E 's|llvm/llvm-.*-ubuntu-x64(.*)|llvm/llvm-ubuntu-x64\1|' >> $VSCODE_SETTINGS
 echo "] }" >> $VSCODE_SETTINGS
