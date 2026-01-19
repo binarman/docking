@@ -33,13 +33,14 @@ class StreamWatchdog(Thread):
         self.service.notify_stopped()
 
 class Service:
-    def __init__(self, name: str, cmd: list, running_message: str, start_marker: str):
+    def __init__(self, name: str, cmd: list, running_message: str, start_marker: str, port: int):
         self.name = name
         self.cmd = cmd
         self.process = None
         self.status = ServiceStatus.STOPPED
         self.message = running_message
         self.start_marker = start_marker
+        self.port = port
         self.watchdog = None
         self.lock = Lock()
         self.max_history_len = 1000
@@ -118,6 +119,9 @@ class Service:
             except:
                 return {"ram": 0, "vram": 0}
 
+    def get_port(self):
+        return self.port
+
     def toggle(self):
         LOG("toggle process")
         if self.status == ServiceStatus.STOPPED:
@@ -146,7 +150,7 @@ class Service:
 
 def test_service_timeout():
     from time import sleep
-    s = Service("sleep", "sleep 1; echo hello; sleep 1", "RUNNING", "hello")
+    s = Service("sleep", "sleep 1; echo hello; sleep 1", "RUNNING", "hello", 8080)
     assert s.get_status() == ServiceStatus.STOPPED
     assert s.get_message() == "STOPPED"
     s.toggle()
@@ -163,7 +167,7 @@ def test_service_timeout():
 
 def test_service_abort():
     from time import sleep
-    s = Service("sleep", "sleep 1", "RUNNING", "hello")
+    s = Service("sleep", "sleep 1", "RUNNING", "hello", 8080)
     assert s.get_status() == ServiceStatus.STOPPED
     assert s.get_message() == "STOPPED"
     s.toggle()
@@ -236,13 +240,12 @@ def status():
             starting_log_id = 0
         else:
             starting_log_id = last_log_id[name] + 1
-        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "memory": s.get_memory_consumption()}
+        statuses[name] = {"status": s.get_status().name, "message": s.get_message(), "log": s.get_log(starting_log_id), "memory": s.get_memory_consumption(), "port": s.get_port()}
     statuses["system"] = get_system_status()
     return jsonify(statuses)
 
 if __name__ == '__main__':
-    services["webui"] = Service("webui", '/tools/stable-diffusion-webui/webui.sh -f --listen --api', 'RUNNING goto http://127.0.0.1:7860', 'Startup time:')
-    services["kohya"] = Service("kohya", '. /tools/python_3.10_venv/bin/activate; LD_LIBRARY_PATH=/tools/kohya_ss/venv/lib/python3.10/site-packages/nvidia/cuda_nvrtc/lib/:$LD_LIBRARY_PATH /tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser', 'RUNNING goto http://127.0.0.1:7861', 'Using shell=True when running external commands...')
-    services["comfy"] = Service("comfy", '. /tools/python_3.12_venv/bin/activate; python3.12 /tools/ComfyUI/main.py --listen', 'RUNNING goto http://127.0.0.1:8188', 'To see the GUI go to:')
+    services["webui"] = Service("webui", '/tools/stable-diffusion-webui/webui.sh -f --listen --api', 'RUNNING goto http://127.0.0.1:7860', 'Startup time:', 7860)
+    services["kohya"] = Service("kohya", '. /tools/python_3.10_venv/bin/activate; LD_LIBRARY_PATH=/tools/kohya_ss/venv/lib/python3.10/site-packages/nvidia/cuda_nvrtc/lib/:$LD_LIBRARY_PATH /tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser', 'RUNNING goto http://127.0.0.1:7861', 'Using shell=True when running external commands...', 7861)
+    services["comfy"] = Service("comfy", '. /tools/python_3.12_venv/bin/activate; python3.12 /tools/ComfyUI/main.py --listen', 'RUNNING goto http://127.0.0.1:8188', 'To see the GUI go to:', 8188)
     app.run(host="0.0.0.0", debug=True, port=5000)
-
