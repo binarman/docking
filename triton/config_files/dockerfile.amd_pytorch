@@ -17,7 +17,7 @@ RUN apt -y -f install
 RUN apt -y install less strace wget psmisc gdb bc vim numactl
 RUN git config --global user.name "$USER_NAME"
 RUN git config --global user.email "$USER_EMAIL"
-RUN pip3 install pandas matplotlib pre-commit lit numpy==1.26.4 pybind11 ninja
+RUN pip3 install pandas matplotlib pre-commit lit numpy==2.2.6 pybind11 ninja
 
 # Initialize bashrc
 RUN mv /root/.bashrc /root/bashrc.back; echo "force_color_prompt=yes" | cat - /root/bashrc.back > /root/.bashrc
