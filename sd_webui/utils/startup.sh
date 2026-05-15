@@ -47,7 +47,7 @@ else
   echo "initialize ComfyUI environment"
   python3.12 -m venv /tools/python_3.12_venv
   source /tools/python_3.12_venv/bin/activate
-  pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu128
+  pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
   pip install -r /tools/ComfyUI/requirements.txt
   deactivate
 fi
