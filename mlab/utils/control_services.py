@@ -245,7 +245,5 @@ def status():
     return jsonify(statuses)
 
 if __name__ == '__main__':
-    services["webui"] = Service("webui", '/tools/stable-diffusion-webui/webui.sh -f --listen --api', 'RUNNING goto http://127.0.0.1:7860', 'Startup time:', 7860)
-    services["kohya"] = Service("kohya", '. /tools/python_3.10_venv/bin/activate; LD_LIBRARY_PATH=/tools/kohya_ss/venv/lib/python3.10/site-packages/nvidia/cuda_nvrtc/lib/:$LD_LIBRARY_PATH /tools/kohya_ss/gui.sh --listen 0.0.0.0 --server_port 7861 --inbrowser', 'RUNNING goto http://127.0.0.1:7861', 'Using shell=True when running external commands...', 7861)
-    services["comfy"] = Service("comfy", '. /tools/python_3.12_venv/bin/activate; python3.12 /tools/ComfyUI/main.py --listen', 'RUNNING goto http://127.0.0.1:8188', 'To see the GUI go to:', 8188)
+    services["comfy"] = Service("comfy", 'python3.12 /tools/ComfyUI/main.py --listen', 'RUNNING goto http://127.0.0.1:8188', 'To see the GUI go to:', 8188)
     app.run(host="0.0.0.0", debug=True, port=5000)
