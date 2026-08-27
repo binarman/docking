@@ -246,4 +246,5 @@ def status():
 
 if __name__ == '__main__':
     services["comfy"] = Service("comfy", 'python3.12 /tools/ComfyUI/main.py --listen', 'RUNNING goto http://127.0.0.1:8188', 'To see the GUI go to:', 8188)
+    services["llama.cpp"] = Service("llama.cpp", '/tools/llama.cpp/build/bin/llama-server --models-dir /models/llama.cpp/ --no-models-autoload --jinja --host 127.0.0.1 --port 8080 -ngl 999 -c 8192', 'RUNNING goto http://127.0.0.1:8080', 'listening on', 8080)
     app.run(host="0.0.0.0", debug=True, port=5000)

@@ -36,6 +36,7 @@ mkdir -p "$MODELS_PATH/lora"
 mkdir -p "$MODELS_PATH/vae"
 mkdir -p "$MODELS_PATH/controlnet"
 mkdir -p "$MODELS_PATH/huggingface"
+mkdir -p "$MODELS_PATH/llama.cpp"
 mkdir -p "$OUTPUT_PATH/comfy"
 mkdir -p "$OUTPUT_PATH/webui"
 
