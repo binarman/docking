@@ -20,6 +20,7 @@ RUN . /system-venv/bin/activate; /init_utils/build_dependencies.sh
 RUN rm -r /init_utils
 
 COPY utils/ /tools/
+COPY config_files/llama_models.ini /tools/llama.cpp
 
 WORKDIR /tools
 
