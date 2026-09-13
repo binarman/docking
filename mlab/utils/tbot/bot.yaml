@@ -1,0 +1,5 @@
+bot_token: 123456789:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+admin_id: 123455789
+pipeline_template_path: /tools/tbot/template.txt
+base_comfy_url: http://127.0.0.1:8188
+comfy_api_key: dummy

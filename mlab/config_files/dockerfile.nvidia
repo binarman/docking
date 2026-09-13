@@ -8,7 +8,7 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y
 RUN apt update
 RUN apt install -y python3.12 python3.12-venv
 RUN python3 -m venv /system-venv
-RUN . /system-venv/bin/activate; pip3 install flask nvsmi pyte psutil ninja
+RUN . /system-venv/bin/activate; pip3 install flask nvsmi pyte psutil ninja python-telegram-bot
 RUN sed -i -e 's/# ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen && locale-gen
 ENV LANG=ru_RU.UTF-8
 ENV LC_ALL=ru_RU.UTF-8
