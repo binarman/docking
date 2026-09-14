@@ -45,13 +45,13 @@ class ComfyAdapter:
 
     def get_status(self, promt_id: str) -> tuple:
         '''
-        returns ("nostatus", None), ("success","output file name"), ("error", None) or ("invalid", None)
+        returns ("queue", None), ("processing", None), ("success","output file name"), ("error", None) or ("invalid", None)
         '''
         url = f"{self.base_url}/history/{promt_id}"
         response = requests.get(url, headers=self.simple_headers)
         result = response.json()
         if promt_id not in result:
-            return ("nostatus", None)
+            return ("processing", None)
         if result[promt_id]["status"]["status_str"] == "error":
             return ("error", None)
         if result[promt_id]["status"]["status_str"] == "success":

@@ -10,7 +10,7 @@ import functools
 
 import yaml
 import numpy as np
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes
 
 from comfy_adapter import ComfyAdapter
@@ -21,21 +21,34 @@ def load_config(path):
         return yaml.safe_load(f)
 
 
-def poll_generation(update, generation_id, comfy, loop):
+async def poll_generation(reply_message, generation_id, comfy):
+    print(type(reply_message))
+    previous_status = None
     while True:
         status = comfy.get_status(generation_id)
         print(f"polling {generation_id} with {status}")
+        if status[0] == "queue" and previous_status != "queue":
+            reply_message = await reply_message.edit_caption("Generation is queued")
+            # TODO process errors
+        if status[0] == "processing" and previous_status != "processing":
+            reply_message = await reply_message.edit_caption("Generation is in progress")
+            # TODO process errors
         if status[0] == "error":
-            asyncio.run_coroutine_threadsafe(update.message.reply_text("Generation was cancelled or error happened"), loop)
+            reply_message = await reply_message.edit_caption("Generation was cancelled or error happened")
+            # TODO process errors
             return
         if status[0] == "invalid":
-            asyncio.run_coroutine_threadsafe(update.message.reply_text("Server error"), loop)
+            reply_message = await reply_message.edit_caption("Server error")
+            # TODO process errors
             return
         if status[0] == "success":
             img = comfy.download_output(status[1])
-            asyncio.run_coroutine_threadsafe(update.message.reply_photo(img, caption="Here is the generated image"), loop)
+            input_media = InputMediaPhoto(img, caption="Here is the generated image")
+            reply_message = await reply_message.edit_media(input_media)
+            # TODO process errors
             return
-        time.sleep(2)
+        previous_status = status[0]
+        await asyncio.sleep(2)
 
 
 async def message_handler(update, context):
@@ -64,9 +77,12 @@ async def message_handler(update, context):
     random_seed = int(random.random()*100500)
     generation_id = comfy.request_generation(input_name, prompt, random_seed)
     print(f"request \"{prompt}\" added with id {generation_id}")
+    
+    with open(config["placeholder_img"], "rb") as img_f:
+        placeholder_img = img_f.read()
+    reply_message = await update.message.reply_photo(placeholder_img, caption="Starting processing image")
 
-    loop = asyncio.get_running_loop()
-    threading.Thread(target=poll_generation, args=(update, generation_id, comfy, loop), daemon=True).start()
+    await poll_generation(reply_message, generation_id, comfy)
 
 
 def main():
@@ -76,7 +92,11 @@ def main():
 
     config = load_config(args.config)
 
-    app = ApplicationBuilder().token(config["bot_token"]).build()
+    app = ApplicationBuilder()
+        .token(config["bot_token"])
+        .read_timeout(30)
+        .write_timeout(30)
+        .build()
     app.bot_data["config"] = config
     app.add_handler(MessageHandler(None, message_handler))
     print("starting telegram bot")
