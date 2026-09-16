@@ -34,12 +34,9 @@ class ComfyAdapter:
         workflow["75:73"]["inputs"]["noise_seed"] = random_seed
 
         url = f"{self.base_url}/api/prompt"
-        print("url:", url)
         response = requests.post(url, headers=self.gen_headers, json={"prompt": workflow})
-        print(response)
         result = response.json()
         prompt_id = result["prompt_id"]
-        print(f"Job submitted: {prompt_id}")
         return prompt_id
 
 

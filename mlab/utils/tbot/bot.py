@@ -12,6 +12,7 @@ import yaml
 import numpy as np
 from telegram import Update, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes
+import logging
 
 from comfy_adapter import ComfyAdapter
 
@@ -22,11 +23,10 @@ def load_config(path):
 
 
 async def poll_generation(reply_message, generation_id, comfy):
-    print(type(reply_message))
     previous_status = None
     while True:
         status = comfy.get_status(generation_id)
-        print(f"polling {generation_id} with {status}")
+        logging.info(f"received generation {generation_id} status {status}")
         if status[0] == "queue" and previous_status != "queue":
             reply_message = await reply_message.edit_caption("Generation is queued")
             # TODO process errors
@@ -54,13 +54,14 @@ async def poll_generation(reply_message, generation_id, comfy):
 async def message_handler(update, context):
     config = context.bot_data["config"]
     admin_id = config["admin_id"]
-    print("received request from user", update.effective_user.id)
+    logging.info(f"received request from user {update.effective_user.id}")
 
     if update.effective_user.id != admin_id:
+        logging.info(f"user is not authorized, skipping")
         return
 
     if not update.message.photo:
-        print("no image provided")
+        logging.info("no image provided")
         await update.message.reply_text("no image attached, nothing to do")
         return
 
@@ -70,17 +71,20 @@ async def message_handler(update, context):
     photo_file = await photo.get_file()
     photo_contents = io.BytesIO()
     await photo_file.download_to_memory(photo_contents)
+    loggin.info("image downloaded from telegram server")
 
     input_name = str(update.update_id) + ".jpg"
     comfy = ComfyAdapter(config["base_comfy_url"], config["comfy_api_key"], config["pipeline_template_path"])
     comfy.upload_input(photo_contents.getbuffer(), input_name)
+    loggin.info("image uploaded to comfyui")
     random_seed = int(random.random()*100500)
     generation_id = comfy.request_generation(input_name, prompt, random_seed)
-    print(f"request \"{prompt}\" added with id {generation_id}")
+    logging.info(f"request \"{prompt}\" added with id {generation_id}")
     
     with open(config["placeholder_img"], "rb") as img_f:
         placeholder_img = img_f.read()
     reply_message = await update.message.reply_photo(placeholder_img, caption="Starting processing image")
+    logging.info("Sent placeholder for generation to telegram")
 
     await poll_generation(reply_message, generation_id, comfy)
 
