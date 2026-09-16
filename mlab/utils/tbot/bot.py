@@ -71,12 +71,12 @@ async def message_handler(update, context):
     photo_file = await photo.get_file()
     photo_contents = io.BytesIO()
     await photo_file.download_to_memory(photo_contents)
-    loggin.info("image downloaded from telegram server")
+    logging.info("image downloaded from telegram server")
 
     input_name = str(update.update_id) + ".jpg"
     comfy = ComfyAdapter(config["base_comfy_url"], config["comfy_api_key"], config["pipeline_template_path"])
     comfy.upload_input(photo_contents.getbuffer(), input_name)
-    loggin.info("image uploaded to comfyui")
+    logging.info("image uploaded to comfyui")
     random_seed = int(random.random()*100500)
     generation_id = comfy.request_generation(input_name, prompt, random_seed)
     logging.info(f"request \"{prompt}\" added with id {generation_id}")
@@ -91,19 +91,20 @@ async def message_handler(update, context):
 
 def main():
     parser = argparse.ArgumentParser()
+    logging.basicConfig(level=logging.INFO)
     parser.add_argument("--config", default="bot.yaml")
     args = parser.parse_args()
 
     config = load_config(args.config)
 
-    app = ApplicationBuilder()
-        .token(config["bot_token"])
-        .read_timeout(30)
-        .write_timeout(30)
+    app = ApplicationBuilder()\
+        .token(config["bot_token"])\
+        .read_timeout(30)\
+        .write_timeout(30)\
         .build()
     app.bot_data["config"] = config
-    app.add_handler(MessageHandler(None, message_handler))
-    print("starting telegram bot")
+    app.add_handler(MessageHandler(None, message_handler, block=False))
+    print("starting telegram bot", flush=True)
     app.run_polling()
 
 
