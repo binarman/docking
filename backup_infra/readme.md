@@ -47,7 +47,11 @@ Local network
 - **A silent unit is a signal** a unit that misses a scheduled sync or check for N days is worth investigating, even if nothing reported an error.
 - **Designated units sends scheduled signals to user** Some units could be configured to send status email or show desktop notifications to user periodically.
 
-## High level description of unit
+## High level description of a unit
+
+TBD
+
+### Config file
 
 TBD
 

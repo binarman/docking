@@ -1,7 +1,5 @@
 #!/usr/bin/python3
-import hashlib
 import sys
-import os
 import pickle
 
 def help():
