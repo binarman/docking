@@ -180,11 +180,24 @@ It includes following information:
 
 TBD
 
-## Executables
+## Core tools
 
 ### install.py
 
 This is a wizard that deploys a unit on a local machine.
+
+### unit.py
+
+This is the core utility in the backup network.
+
+### desktop-notify.py
+
+This utility requests a system status from a given unit and sends desktop notification via notify-send.
+Optionally added to cron by installation wizard.
+
+## Debug and test tools
+
+These tools are used for debug purposes and for easy review of manifest contents.
 
 ### create_manifest.py
 
@@ -197,15 +210,6 @@ Prints contents of a given manifest file in a human readable form.
 ### compare_manifests.py
 
 Compares two manifests and prints common files and differences, i.e. unique files for each manifest and common files with different hashes or statuses.
-
-### unit.py
-
-This is the core utility in the backup network.
-
-### desktop-notify.py
-
-This utility requests a system status from a given unit and sends desktop notification via notify-send.
-Optionally added to cron by installation wizard.
 
 ## Open issues
 
