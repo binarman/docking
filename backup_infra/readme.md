@@ -28,6 +28,7 @@ This system is designed with the following assumptions in mind:
 | **unit** | A Docker container on a host that runs the backup scripts. One or more units run per host. A unit is *not* a continuously running service: it wakes up on a schedule to sync, and on a separate schedule to check integrity and sits idle otherwise. |
 | **repository** (repo) | A named directory of managed files, owned by a unit and synchronized between hosts. A repository is the basic unit of sync and verification. |
 | **manifest** | Describes the repository's contents. Manifest contains version, root path, repository name, metadata and information about tracked files with checksums and timestamps. |
+| **tracked file** | A file stored in one of repositories, i.e. all files in all repositories are considered tracked.  |
 
 ## Example use case
 
@@ -129,11 +130,20 @@ Config file contains following fields:
 
 - **port**: Network port to listen
 - **address**: Optional address to listen
+- **unit identifier**: this could be considered a name of a unit. It is expected to be unique in the backup network.
 - **trusted_token**: Arbitrary string, which is used to verify that unit is communicating with compatible network of units. This token is sent by units back to discovery network request. If sent token is equal to the one in config file, unit is considered a valid peer.
 - **sync_delay**: Optional integer that defines delay in seconds between synchronizations
-- **sync_schedule**: Optional string that defines schedule of synchronization in format "YYYY MM DD hh mm ss w", each field could be *, which means event should run regardless of this date part.
-  YYYY represents year, MM - month, DD - day of month, hh - hour of a day, mm - minute in an hour, ss - second in a minute, w - day of a week, starting from 0 - Monday.
-  For example "* * * 00 11 22 *" - synchronization should start every day of every month of every year at 00:11:22, every day of the week
+- **sync_schedule**: Optional string that defines schedule of synchronization in cron schedule format:
+```
+    * * * * *
+  # | | | | |
+  # | | | | day of the week (0–6) (Sunday to Saturday)
+  # | | | month (1–12)
+  # | | day of the month (1–31)
+  # | hour (0–23)
+  # minute (0–59)
+```
+  For example "45 23 * * 6" - synchronization should start at 23:45 (11:45 PM) every Saturday.
 - **integrity_delay**: Optional integer that defines delay in seconds between integrity checks
 - **integrity_schedule**: defines the schedule of integrity checks, in the same format as sync_schedule
 - **repository**: Array of repositories to track. Each repository includes following fields:
@@ -168,7 +178,7 @@ It includes following information:
 - **path**: PosixPath, absolute path to local repository root directory, which was used to generate manifest. Manifests on different units could have different paths for the same repository.
 - **name**: string, repository name. Same on different units for the same repository.
 - **files**: dict, maps file path to a file metadata. Each metadata contains:
-  - **history**: list of strings, history of a given file changes. If file added or modified related record contains string in format "hash:<file hash>", if file was deleted, string contains "deleted:timestamp".
+  - **history**: list of strings, history of a given file changes. If file added or modified related record contains string in format "hash:<file hash>", if file was deleted, string contains "deleted:unit identifier".
   - **timestamp**: datetime, last modification timestamp
 - **issues**: list, list of encountered problems: I/O errors, unexpected hash changes, conflicts, etc. Each issue description is an object:
   - **type**: string: contains "fault", "unexpected_hash", "conflict"
