@@ -45,7 +45,7 @@ def is_subset(subset, full):
     for token in subset:
         while full_pos < len(full) and full[full_pos] != token:
             full_pos += 1
-        if full_pos == len(full) or full[full_pos] != token:
+        if full_pos == len(full):  # algorithm reached the end of the full history, but did not find the token
             return False
     return True
 ```
