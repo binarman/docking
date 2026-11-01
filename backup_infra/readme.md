@@ -149,6 +149,7 @@ The config file contains the following fields:
 - **repository**: Array of repositories to track. Each repository includes the following fields:
   - **name**: Formal name of the repository, used to sync between units.
   - **path**: Local path in the filesystem to the root of this repository.
+- **manifest_storage**: Local path to the directory where manifest files are stored.
 
 "sync_delay" and "sync_schedule" are mutually exclusive fields, but at least one of them should be defined.
 The same applies to the "integrity_delay" and "integrity_schedule" pair.
