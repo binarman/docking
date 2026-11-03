@@ -182,9 +182,9 @@ It includes the following information:
   - **history**: list of strings, the history of changes for a given file. If the file was added or modified, the related record contains a string in the format "hash:<file hash>"; if the file was deleted, the string contains "deleted:<unit identifier>".
   - **timestamp**: datetime, last modification timestamp.
 - **issues**: list, list of encountered problems (I/O errors, unexpected hash changes, conflicts, etc.). Each issue description is an object:
-  - **type**: string, contains one of "fault", "unexpected_hash", "conflict".
+  - **type**: string, contains one of "fault" or "conflict".
   - **path**: PosixPath, path to the file whose reading created this issue.
-  - **remote**: string or None, address of the remote unit with which the conflict occurred, in the format "<address>:<port>".
+  - **remote**: string or None, unit identifier of the remote unit with which the conflict occurred.
   - **description**: string, text description to display to the user; may contain more details. Empty content is possible.
 
 ## Network discovery protocol

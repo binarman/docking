@@ -16,6 +16,10 @@ Each `D` token contains the unit identifier where the deletion event was registe
 
 ## Algorithm
 
+Before syncronization with remote, repo is checked for `fault` issues. If there are any, do not synchronize, because these errors could be a sign of hardware of software failers. Same happens on remote repository. If remote has `fault` issues it should refuse providing manifest for faulty repo.
+`conflict` issues related to currently processed remote are removed and reevaluated in the process of syncronization.
+`conflict` issues related to other remotes are left intact.
+
 | Local manifest | Remote manifest | What to do |
 | --- | --- | --- |
 | `N` | `N` | Do nothing |
