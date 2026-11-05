@@ -8,15 +8,14 @@ There are few modules used by other tools:
 
 ## Network communications
 
-There are three types of network communications in the system:
+There are multiple types of network communications in the system:
 
-1. unit x user (in web browser): `summary` and `reevaluate` requests
+1. unit x user (in web browser): `summary`, `reevaluate`, `file` and `discover` requests
 2. unit x unit: `status` request
 3. unit x desktop_notify: `network` request
 
 `network_messages.py` is the one point which defines format for network communication between units.
 It defines functions that format outgoing and parse incoming network messages. This includes as status requests/answers, user-faced web pages, network discovery messages.
-At this point focus is on status requests and web page, it does not 
 
 ### Summary request
 
@@ -34,12 +33,20 @@ Server answers with a web page which contains summary for current unit:
 
 POST request for reevaluation is awaited on <unit_address>/reevaluate address.
 
+### File request
+
+GET request for a tracked file. Detailed description TBD.
+
+### Discover request
+
+Request to announce the unit in the network. Detailed description TBD.
+
 ### Status request
 
 Status request is designed for unit x unit communications.
 
 Status request is a GET request on address <unit_address>/status.
-Answer to this request should be a json with a short status(OK, faulty, conflicts) and a list of manifests describing this node.
+Answer to this request should be a json with a short status(OK, faulty, conflicts) and a list of base64 encoded manifests describing this node.
 
 ### Network request
 
@@ -55,11 +62,12 @@ Response to this request contains json with information about all known units in
 
 At this stage `network_messages.py` should implement following interfaces:
 
-- `generate_summary(manifests: list of manifests, remotes: list of tuples(remote name, remote status, last syncronization time)) -> string` generates html page for user `/summary` request;
-- `generate_status(manifests: list of manifests) -> string` generates string containing base64 encoded manifests;
-- `parse_status(string) -> list of manifests` decodes base64 manifest to a list of manifests received from the remote unit;
+- `generate_summary(unit_identifier: string, untime_seconds: integer, manifests: list of local manifests, remotes: list of tuples(remote name, remote status, last syncronization time)) -> string` generates html page for user `/summary` request;
+- `generate_status(manifests: list of manifests) -> string` generates json with a unit status and list of base64 encoded manifests;
+- `parse_status(string) -> tuple(status, list of manifests)` decodes string encoded by generate_status;
 - `generate_network_status(remotes: list of tuples(name, status, last sync time)) -> string` generates json string containing encoded network status;
 - `parse_network_status(string) -> list of tuples(name, status, last sync time)` decodes json to network status.
+- `discover` and `file` related handlers TBD
 
 ## Dependencies
 
@@ -73,7 +81,7 @@ Depends on `manifest.py`, `unit_config.py`, `network_messages.py`.
 
 ### desktop_notify.py
 
-Depends on `manifest.py`, `network_messages.py`.
+Depends on `network_messages.py`.
 
 ### create_manifest.py
 

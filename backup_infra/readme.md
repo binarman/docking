@@ -202,7 +202,7 @@ This is a wizard that deploys a unit on a local machine.
 
 This is the core utility in the backup network.
 
-### desktop-notify.py
+### desktop_notify.py
 
 This utility requests a system status from a given unit and sends a desktop notification via notify-send.
 Optionally added to cron by the installation wizard.
