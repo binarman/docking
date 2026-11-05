@@ -71,8 +71,48 @@ def is_deleted(metadata):
     return bool(history) and history[-1].startswith(DELETED_PREFIX)
 
 
+def is_subset(subset, full):
+    """Whether ``subset`` is an order-preserving subsequence of ``full``."""
+    full_pos = 0
+    for token in subset:
+        while full_pos < len(full) and full[full_pos] != token:
+            full_pos += 1
+        if full_pos == len(full):
+            return False
+        full_pos += 1
+    return True
+
+
+def merge_histories(h1, h2):
+    """Merge two histories into one.
+
+    The order of events in each individual history is preserved and the
+    result is the same no matter in which order the histories are provided.
+    """
+    merged = []
+    p1, p2 = 0, 0
+    while p1 < len(h1) or p2 < len(h2):
+        if p1 < len(h1) and p2 == len(h2):
+            merged.append(h1[p1])
+            p1 += 1
+        elif p2 < len(h2) and p1 == len(h1):
+            merged.append(h2[p2])
+            p2 += 1
+        elif h1[p1] == h2[p2]:
+            merged.append(h1[p1])
+            p1 += 1
+            p2 += 1
+        elif h1[p1] < h2[p2]:
+            merged.append(h1[p1])
+            p1 += 1
+        else:
+            merged.append(h2[p2])
+            p2 += 1
+    return merged
+
+
 class Manifest:
-    def __init__(self, name, path, unit_id):
+    def __init__(self, name, path, unit_id=None):
         self.version = MANIFEST_VERSION
         self.name = str(name)
         self.path = Path(path)
@@ -83,7 +123,7 @@ class Manifest:
     # ------------------------------------------------------------- building
 
     @classmethod
-    def from_directory(cls, name, root, unit_id):
+    def from_directory(cls, name, root, unit_id=None):
         """Build a new manifest by scanning ``root`` recursively."""
         root = Path(root)
         if not root.is_dir():
@@ -137,25 +177,39 @@ class Manifest:
                     )
                     continue
                 metadata = self.files.get(rel_path)
-                new_timestamp = datetime.fromtimestamp(st.st_mtime),
+                new_timestamp = datetime.fromtimestamp(st.st_mtime)
                 if metadata is None:
                     metadata = {
                         "history": [make_hash_entry(file_hash)],
-                        "timestamp": new_timestamp
+                        "timestamp": new_timestamp,
                     }
                     self.files[rel_path] = metadata
                 elif current_hash(metadata) != file_hash:
-                    if new_timestamp != metadata["timestamp"]:
+                    if new_timestamp == metadata["timestamp"]:
                         self.add_issue(
                             "fault",
                             rel_path,
-                            description=f"expected hash: {metadata["timestamp"]}, got {new_timestamp}",
+                            description=(
+                                "file hash changed without a modification time "
+                                f"change: {current_hash(metadata)} != {file_hash}"
+                            ),
                         )
                         continue
                     metadata["history"].append(make_hash_entry(file_hash))
                     metadata["timestamp"] = new_timestamp
                 else:
                     metadata["timestamp"] = new_timestamp
+        self._record_deletions(root)
+
+    def _record_deletions(self, root):
+        """Append a deletion token for tracked files missing from ``root``."""
+        for rel_path in sorted(self.files):
+            if (root / rel_path).is_file():
+                continue
+            metadata = self.files[rel_path]
+            if not is_deleted(metadata):
+                metadata["history"].append(make_deleted_entry(self.unit_id))
+                metadata["timestamp"] = datetime.now()
 
     # --------------------------------------------------------------- issues
 
@@ -187,9 +241,30 @@ class Manifest:
             }
         )
 
-    def is_syncronizable(self):
+    def is_faulty(self):
         """Whether the repository has any unresolved ``fault`` issue."""
         return any(issue["type"] == "fault" for issue in self.issues)
+
+    def has_issue(self, path, types=None):
+        """Whether an unresolved issue exists for ``path``.
+
+        When ``types`` is given, only issue types in that collection count.
+        """
+        path = Path(path)
+        return any(
+            issue["path"] == path
+            and (types is None or issue["type"] in types)
+            for issue in self.issues
+        )
+
+    def resolve_issue(self, path, issue_type):
+        """Remove the matching issue only; re-hashing is the caller's job."""
+        path = Path(path)
+        self.issues = [
+            issue
+            for issue in self.issues
+            if not (issue["path"] == path and issue["type"] == issue_type)
+        ]
 
     # ------------------------------------------------------------ reporting
 
@@ -274,19 +349,140 @@ class Manifest:
     # -------------------------------------------------------------- merging
 
     def clean_remote_issues(self, remote_id):
-        # TBD
-        pass
+        """Remove conflict issues recorded against ``remote_id``.
+
+        Before a new synchronization round the caller removes the conflict
+        issues that were registered for the remote being synced, so they can
+        be re-evaluated from the fresh remote state.  Issues pointing at any
+        other remote (or any non-conflict type) are left intact.
+
+        Returns the list of removed issue dicts.
+        """
+        removed = []
+        kept = []
+        for issue in self.issues:
+            if issue["type"] == "conflict" and issue["remote"] == remote_id:
+                removed.append(issue)
+            else:
+                kept.append(issue)
+        self.issues = kept
+        return removed
 
     def merge(self, other, remote_id=None):
         """Merge the peer manifest ``other`` into this (local) manifest.
 
-        ``remote`` is the ``unit identifier`` of the peer unit, recorded
+        ``remote_id`` is the ``unit identifier`` of the peer unit, recorded
         on conflict issues. Returns a list of action dicts. One per path
-        which requires update from remove, i.e. download new version of
+        which requires update from the remote, i.e. download a new version of
         the file or delete the file. Never mutates ``other``.
         """
-        # TBD
-        pass
+        actions = []
+        for rel_path in sorted(set(self.files) | set(other.files)):
+            local_meta = self.files.get(rel_path)
+            remote_meta = other.files.get(rel_path)
+            if local_meta is None:
+                if remote_meta is None:
+                    continue
+                # N + A/B or N + D: adopt the remote history.
+                self.files[rel_path] = self._copy_metadata(remote_meta)
+                if not is_deleted(remote_meta):
+                    actions.append({"action": "fetch", "path": rel_path})
+                continue
+            if remote_meta is None:
+                continue  # A/D + N: do nothing
+            local_deleted = is_deleted(local_meta)
+            remote_deleted = is_deleted(remote_meta)
+
+            if local_deleted and remote_deleted:
+                # D + D: merge the remote history into the local one.
+                local_meta["history"] = merge_histories(
+                    local_meta["history"], remote_meta["history"]
+                )
+                local_meta["timestamp"] = remote_meta["timestamp"]
+                continue
+
+            if not local_deleted and not remote_deleted:
+                local_hash = current_hash(local_meta)
+                remote_hash = current_hash(remote_meta)
+                if local_hash == remote_hash:
+                    # A + A: merge the remote history into the local one.
+                    local_meta["history"] = merge_histories(
+                        local_meta["history"], remote_meta["history"]
+                    )
+                    local_meta["timestamp"] = remote_meta["timestamp"]
+                elif is_subset(local_meta["history"], remote_meta["history"]):
+                    # A/B, local is behind: fetch and merge.
+                    local_meta["history"] = merge_histories(
+                        local_meta["history"], remote_meta["history"]
+                    )
+                    local_meta["timestamp"] = remote_meta["timestamp"]
+                    actions.append({"action": "fetch", "path": rel_path})
+                elif not is_subset(
+                    remote_meta["history"], local_meta["history"]
+                ):
+                    self._register_conflict(
+                        other, rel_path, remote_id, local_meta, remote_meta
+                    )
+                continue
+
+            if not local_deleted:
+                # A + D: delete only if the local history is consistent
+                # with the remote one and the local side has no issues.
+                if is_subset(local_meta["history"], remote_meta["history"]):
+                    if self.has_issue(rel_path):
+                        continue
+                    local_meta["history"] = merge_histories(
+                        local_meta["history"], remote_meta["history"]
+                    )
+                    local_meta["timestamp"] = remote_meta["timestamp"]
+                    actions.append({"action": "delete", "path": rel_path})
+                elif not is_subset(remote_meta["history"], local_meta["history"]):
+                    self._register_conflict(
+                        other, rel_path, remote_id, local_meta, remote_meta
+                    )
+                continue
+
+            # D + A/B: the file was deleted locally, the remote still has it.
+            if is_subset(local_meta["history"], remote_meta["history"]):
+                local_meta["history"] = merge_histories(
+                    local_meta["history"], remote_meta["history"]
+                )
+                local_meta["timestamp"] = remote_meta["timestamp"]
+                actions.append({"action": "fetch", "path": rel_path})
+            elif not is_subset(remote_meta["history"], local_meta["history"]):
+                self._register_conflict(
+                    other, rel_path, remote_id, local_meta, remote_meta
+                )
+        return actions
+
+    @staticmethod
+    def _copy_metadata(metadata):
+        """Deep-copy a per-file metadata dict."""
+        return {
+            "history": list(metadata["history"]),
+            "timestamp": metadata["timestamp"],
+        }
+
+    def _register_conflict(self, other, rel_path, remote_id, local_meta, remote_meta):
+        """Add a conflict issue unless either side is faulty at the path.
+
+        Faulty repositories must wait for a human, so no conflict is
+        registered when an unresolved fault already exists on the path.
+        """
+        if self.has_issue(rel_path, types="fault") or other.has_issue(
+            rel_path, types="fault"
+        ):
+            return
+        self.add_issue(
+            "conflict",
+            rel_path,
+            remote=remote_id,
+            description=(
+                "diverged histories: local="
+                f"{current_hash(local_meta) or 'deleted'}, "
+                f"remote={current_hash(remote_meta) or 'deleted'}"
+            ),
+        )
 
 
     # ----------------------------------------------------------- persistence
