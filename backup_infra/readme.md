@@ -130,7 +130,7 @@ The config file contains the following fields:
 
 - **port**: Network port to listen on.
 - **address**: Optional address to listen on.
-- **unit identifier**: This could be considered the name of the unit. It is expected to be unique in the backup network.
+- **identifier**: This is a name of a unit. It is expected to be unique in the backup network.
 - **trusted_token**: Arbitrary string that is used to verify that the unit is communicating with a compatible network of units. This token is sent back by the units in response to discovery requests. If the sent token is equal to the one in the config file, the unit is considered a valid peer.
 - **sync_delay**: Optional integer that defines the delay in seconds between synchronizations.
 - **sync_schedule**: Optional string that defines the schedule of synchronization, in cron schedule format:
@@ -159,9 +159,10 @@ Example:
 ```yaml
 port: 8090
 address: 0.0.0.0
+identifier: laptop
 trusted_token: "Hello my backup network"
 sync_delay: 86400
-integrity_schedule: "* * 03 00 11 22 *"
+integrity_schedule: "45 23 * * 6"
 repository:
   - name: photos
     path: /data/photos
