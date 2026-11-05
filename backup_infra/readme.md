@@ -106,11 +106,9 @@ The internal state of the unit includes:
 
 The unit.py script parses a given config file, loads local manifests for the configured repos, runs network discovery, and then spawns three async tasks:
 - listens for and answers appropriately to incoming network connections
-  - network discovery requests
-  - liveness requests
-  - requests for repo manifests
+  - network discovery requests (also used for a intermediate liveness verification)
+  - requests for unit status and manifests
   - requests to send tracked files
-  - requests to resolve a given issue. This removes the issue for the given file and forces information to be recomputed for it (hash, timestamp, etc.)
   - requests for the overall system summary and an issue resolution page. The issue resolution page provides a fast interface to mark issues as resolved and confirm file deletion.
 - synchronizes with other units
   - checks the liveness of other units
@@ -145,7 +143,7 @@ The config file contains the following fields:
 ```
   For example, "45 23 * * 6" — synchronization should start at 23:45 (11:45 PM) every Saturday.
 - **integrity_delay**: Optional integer that defines the delay in seconds between integrity checks.
-- **integrity_schedule**: Defines the schedule of integrity checks, in the same format as sync_schedule.
+- **integrity_schedule**: Optional string that defines the schedule of integrity checks, in the same format as sync_schedule.
 - **repository**: Array of repositories to track. Each repository includes the following fields:
   - **name**: Formal name of the repository, used to sync between units.
   - **path**: Local path in the filesystem to the root of this repository.
