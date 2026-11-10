@@ -17,8 +17,8 @@ On start up the script:
    (message formats are defined by ``network_messages``):
    - ``GET /status`` -- JSON short status plus base64-encoded manifests
      (unit x unit);
-   - ``GET /network`` -- JSON list of known units (unit x desktop_notify);
-     always empty in the single-unit configuration;
+   - ``GET /network`` -- JSON list of all units in the network (this unit
+     plus any known units; unit x desktop_notify);
    - ``GET /summary`` -- the user facing HTML status page; ``GET /``
      redirects here;
    - ``POST /reevaluate`` -- re-evaluates the integrity issues of one
@@ -234,6 +234,16 @@ class Unit:
             (name, info["status"], info["last_sync"])
             for name, info in sorted(self._remotes.items())
         ]
+
+    def network_units(self):
+        """``(name, status, last sync time)`` tuples for every unit in
+        the network: this unit first (its live status, with the request
+        time as the sync time since its data is reported directly), then
+        the known units.
+        """
+        return [
+            (self.identifier, self.overall_status(), datetime.now())
+        ] + self.remotes
 
     def overall_status(self):
         """Short status of the unit: the most severe repository status."""
@@ -455,7 +465,7 @@ class Unit:
                 return 200, "application/json", payload
             if path == "/network":
                 async with self._lock:
-                    payload = generate_network_status(self.remotes)
+                    payload = generate_network_status(self.network_units())
                 return 200, "application/json", payload
             if path == "/summary":
                 async with self._lock:

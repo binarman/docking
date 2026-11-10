@@ -57,7 +57,7 @@ The answer to this request should be JSON with a short status (OK, faulty, confl
 The network request is designed for unit x desktop_notify communication; it provides a short summary for the user's desktop notification.
 
 This is a GET request to the <unit_address>/network endpoint.
-The response to this request contains JSON with information about all known units in the network:
+The response to this request contains JSON with information about all known units(including current one) in the network:
 - Unit name
 - Short status: OK, faulty, conflicts
 - Time of last synchronization with the current unit
@@ -72,6 +72,13 @@ At this stage, `network_messages.py` should implement the following interfaces:
 - `generate_network_status(remotes: list of tuples(name, status, last sync time)) -> string` generates a JSON string containing the network status;
 - `parse_network_status(string) -> list of tuples(name, status, last sync time)` decodes the JSON into the network status.
 - The `discover` and `file` related handlers are TBD
+
+## desktop_notify.py behavior
+
+`desktop-notify.py` utility makes `network` request to a given address, prepares a multiline message based on response and calls `/usr/bin/notify-send`. If request failed, message should clearly show this, if any of the knowns hosts do not have "OK" status, treat this as a failure.
+
+Failed message uses following argument template: `-t 43200000 -i /usr/custom/scripts/error.png "PROBLEMS DETECTED" "<message body>"`.
+Successfull message uses following argument template: `-t 43200000 -i /usr/custom/scripts/ok.png "SYSTEM OP" "<message body>"`
 
 ## Dependencies
 

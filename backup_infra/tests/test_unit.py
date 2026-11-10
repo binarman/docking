@@ -437,7 +437,30 @@ def test_network_endpoint(tmp_path):
     status, headers, body = with_server(unit, scenario)
     assert status == 200
     assert headers["Content-Type"].startswith("application/json")
-    assert parse_network_status(body) == []
+    units = parse_network_status(body)
+    assert len(units) == 1  # single unit: only itself is known
+    name, short_status, last_sync = units[0]
+    assert name == unit.identifier
+    assert short_status == STATUS_OK
+    assert last_sync is not None
+    # the unit reports its own data as up to date
+    assert (datetime.now() - last_sync).total_seconds() < 5
+
+
+def test_network_endpoint_reports_local_faulty_status(tmp_path):
+    unit, repo_root = make_unit(tmp_path, content={"a.txt": "alpha"})
+
+    async def scenario(base):
+        await unit.integrity_check()
+        tamper_file(repo_root / "a.txt", "tampered")
+        await unit.integrity_check()
+        return await _http(f"{base}/network")
+
+    status, _headers, body = with_server(unit, scenario)
+    assert status == 200
+    name, short_status, _last_sync = parse_network_status(body)[0]
+    assert name == unit.identifier
+    assert short_status == STATUS_FAULTY
 
 
 def test_summary_endpoint(tmp_path):
