@@ -17,6 +17,7 @@ This system is designed with the following assumptions in mind:
 - The system tracks personal photo archives, documents, etc. Files are rarely added or deleted (on average, less often than once per day);
 - The system runs on consumer-grade hardware with relatively low reliability;
 - The system runs on a trusted local network, so no encryption is needed (pending, may be reevaluated);
+- All servers are in one local network, so broadcast messages can reach all nodes in backup network.
 - The system should expect file changes from the user, because some data copies are directly accessible to the user;
 - Asking the user to accept changes does not add too much overhead;
 
@@ -127,6 +128,8 @@ The script is configured by a YAML config file; see the description below.
 The config file contains the following fields:
 
 - **port**: Network port to listen on.
+- **discovery_port**: Network port used to discover network.
+- **discovery_address**: Network address used for broadcast messages.
 - **address**: Optional address to listen on.
 - **identifier**: This is a name of a unit. It is expected to be unique in the backup network.
 - **trusted_token**: Arbitrary string that is used to verify that the unit is communicating with a compatible network of units. This token is sent back by the units in response to discovery requests. If the sent token is equal to the one in the config file, the unit is considered a valid peer.
@@ -156,6 +159,8 @@ Example:
 
 ```yaml
 port: 8090
+discovery_port: 8090
+discovery_address: 192.168.1.255
 address: 0.0.0.0
 identifier: laptop
 trusted_token: "Hello my backup network"
@@ -185,10 +190,6 @@ It includes the following information:
   - **path**: PosixPath, path to the file whose reading created this issue.
   - **remote**: string or None, unit identifier of the remote unit with which the conflict occurred.
   - **description**: string, text description to display to the user; may contain more details. Empty content is possible.
-
-## Network discovery protocol
-
-TBD
 
 ## Core tools
 

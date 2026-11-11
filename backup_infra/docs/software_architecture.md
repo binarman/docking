@@ -12,6 +12,7 @@ There are a few modules used by other tools:
 
 ## Network communications
 
+Main network communications are done on top of TCP protocol.
 There are multiple types of network communications in the system:
 
 1. unit x user (in web browser): `summary`, `reevaluate` requests
@@ -43,7 +44,9 @@ GET request for a tracked file. Detailed description TBD.
 
 ### Discover request
 
-Request to announce the unit in the network. Detailed description TBD.
+This request is designed for unit x unit communication.
+
+It is used to announce the unit in the network. This request is done over UDP protocol.
 
 ### Status request
 
@@ -79,6 +82,20 @@ At this stage, `network_messages.py` should implement the following interfaces:
 
 Failed message uses following argument template: `-t 43200000 -i /usr/custom/scripts/error.png "PROBLEMS DETECTED" "<message body>"`.
 Successfull message uses following argument template: `-t 43200000 -i /usr/custom/scripts/ok.png "SYSTEM OP" "<message body>"`
+
+## Network discovery protocol
+
+Every unit works in one of two modes:
+- `root`: listens to `discovery_port` UDP and resends broadcast notifications to other known units on the same machine.
+- `leaf`: listens to `discovery_port + offset unique to this unit` UDP port.
+
+On startup unit tries to bind with `discovery_port` UDP port, if bind is successful, unit enters `root` mode, otherwise it enters `leaf` mode. In `leaf` mode unit scans ports one by one and tries to bind. It continue until bind is successful or it tries 128 ports. If no free port was found, unit exits with an error message.
+
+After UDP port is bindeded, unit sends broadcast message to the `discovery_address` on `discovery_port` port. This message contains current unit name, unit UDP port, unit TCP port and `trusted_token`.
+
+`root` unit receives messages and resends them to known local units.
+Both `root` and `leaf` units update lists of known remote units if received `trusted_token` is equal to current unit `trusted_token`.
+For syncronization purposes units on the same different from the current one are considered "remote" units.
 
 ## Dependencies
 
