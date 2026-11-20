@@ -248,4 +248,5 @@ if __name__ == '__main__':
     services["comfy"] = Service("comfy", 'python3.12 /tools/ComfyUI/main.py --listen', 'RUNNING goto http://127.0.0.1:8188', 'To see the GUI go to:', 8188)
     services["llama.cpp"] = Service("llama.cpp", '/tools/llama.cpp/build/bin/llama-server --models-dir /models/llama.cpp/ --no-models-autoload --jinja --host 0.0.0.0 --port 8080 --models-preset /tools/llama.cpp/llama_models.ini', 'RUNNING goto http://127.0.0.1:8080', 'listening on', 8080)
     services["tbot"] = Service("tbot", 'python3.12 /tools/tbot/bot.py --config /tools/tbot/bot.yaml', 'RUNNING', 'starting telegram bot', None)
+    services["strata"] = Service("strata", '/root/.local/bin/strata serve --host 0.0.0.0 --port 8081 --profile qwen38-flash-next-q4-128k', 'RUNNING goto http://127.0.0.1:8081', 'ready:', 8081)
     app.run(host="0.0.0.0", debug=True, use_reloader=False, port=5000)

@@ -16,3 +16,7 @@ two tools are available throught web interfaces:
 - [kohuya_ss](http://localhost:7861)
 
 These tools are also available in local network via host address.
+
+### Setup
+
+To use strata, need to exec into running container, run `/root/.local/bin/strata launch` and follow instructions to setup the server.

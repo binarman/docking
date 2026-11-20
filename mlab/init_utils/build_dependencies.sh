@@ -17,3 +17,6 @@ cd /tools/llama.cpp
 LD_LIBRARY_PATH=/usr/local/cuda-13.0/compat/:$LD_LIBRARY_PATH
 cmake -B build -DGGML_CUDA=ON
 cmake --build build --config Release -j4
+
+echo "installing strata"
+curl -fsSL --connect-timeout 15 --max-time 120 https://github.com/Niko1221/Strata/releases/latest/download/install.sh -o install.sh && sh install.sh
