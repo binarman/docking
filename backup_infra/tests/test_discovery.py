@@ -12,11 +12,14 @@ alone).
   trusted-token check
 - peer expiry (liveness), malformed datagrams, the discovered remotes
   in the unit state and the ``/network`` endpoint
+- the debug-level trace of what is announced, what is received and what
+  a root decides to forward (``unit.py --log-level debug``)
 """
 
 import asyncio
 import logging
 import socket
+import time
 
 import pytest
 
@@ -299,7 +302,7 @@ def test_malformed_datagrams_are_ignored(tmp_path, caplog):
     asyncio.run(scenario())
 
 
-def test_own_announcement_is_ignored(tmp_path):
+def test_own_announcement_is_ignored(tmp_path, caplog):
     async def scenario():
         unit = make_unit(tmp_path, "unit-a", free_tcp_port(), 45000)
         discovery = make_discovery(unit)
@@ -309,12 +312,15 @@ def test_own_announcement_is_ignored(tmp_path):
         message = unit_module.generate_discovery(
             "unit-a", 45000, unit.config.port, "token"
         )
-        discovery.handle_datagram(message.encode("utf-8"), ("127.0.0.1", 45000))
+        with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+            discovery.handle_datagram(
+                message.encode("utf-8"), ("127.0.0.1", 45000)
+            )
         assert known_ids(discovery) == set()
         assert unit.remotes == []
+        assert "it is this unit itself" in caplog.text
 
     asyncio.run(scenario())
-
 
 
 # --------------------------------------------------------------- announcements
@@ -516,5 +522,158 @@ def test_discovery_requires_a_configured_port(tmp_path):
             await discovery.start()
 
     asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------- log details
+
+
+def make_offline_discovery(
+    tmp_path, identifier="unit-a", udp_port=45000, mode="root"
+):
+    """A discovery that never bound a socket: fake transport, fixed mode.
+
+    Enough of a started unit to call :meth:`Discovery.announce`,
+    :meth:`Discovery.handle_datagram` and :meth:`Discovery._forward`
+    without touching the network.
+    """
+    unit = make_unit(tmp_path, identifier, free_tcp_port(), udp_port)
+    discovery = make_discovery(unit)
+    discovery._transport = _FakeTransport()
+    discovery._udp_port = udp_port
+    discovery._mode = mode
+    return discovery
+
+
+def add_peer(
+    discovery, unit_id, address="127.0.0.1", unit_port=45001, local=True
+):
+    """Add a known peer to ``discovery`` without running the protocol."""
+    discovery._peers[unit_id] = {
+        "address": address,
+        "unit_port": unit_port,
+        "tcp_port": 18090,
+        "local": local,
+        "last_seen": time.monotonic(),
+    }
+
+
+def test_announcement_is_logged(tmp_path, caplog):
+    async def scenario():
+        discovery = make_offline_discovery(tmp_path)
+        with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+            await discovery.announce()
+        assert (
+            "announcing unit 'unit-a' (UDP port 45000, TCP port "
+            in caplog.text
+        )
+        assert "to 127.0.0.1:45000 in root mode" in caplog.text
+        assert (
+            "forwarded its own announcement to 0 of 0 known peer(s)"
+            in caplog.text
+        )
+        assert [addr for _, addr in discovery._transport.sent] == [
+            ("127.0.0.1", 45000)
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_received_announcement_is_logged(tmp_path, caplog):
+    async def scenario():
+        discovery = make_offline_discovery(tmp_path)
+        message = unit_module.generate_discovery(
+            "unit-b", 45001, 18090, "token"
+        )
+        with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+            discovery.handle_datagram(
+                message.encode("utf-8"), ("127.0.0.1", 45001)
+            )
+        assert (
+            f"{len(message)} byte datagram from 127.0.0.1:45001"
+            in caplog.text
+        )
+        assert (
+            "valid announcement of unit 'unit-b' from 127.0.0.1:45001 "
+            "(UDP port 45001, TCP port 18090)" in caplog.text
+        )
+        # the only known peer is the one that announced: it is not sent
+        # its own announcement back
+        assert (
+            "not forwarding to unit 'unit-b': the announcement came from "
+            "it at 127.0.0.1:45001" in caplog.text
+        )
+        assert (
+            "forwarded 127.0.0.1:45001 to 0 of 1 known peer(s)"
+            in caplog.text
+        )
+
+    asyncio.run(scenario())
+
+
+def test_forwarding_decisions_are_logged(tmp_path, caplog):
+    discovery = make_offline_discovery(tmp_path)
+    add_peer(discovery, "local-peer", unit_port=45001)
+    add_peer(
+        discovery,
+        "other-host-peer",
+        address="203.0.113.9",
+        unit_port=45002,
+        local=False,
+    )
+    add_peer(discovery, "origin-peer", unit_port=45003)
+    with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+        discovery._forward(
+            b"announcement", ("127.0.0.1", 45003), "origin-peer"
+        )
+    assert "forwarded to unit 'local-peer' at 127.0.0.1:45001" in caplog.text
+    assert (
+        "not forwarding to unit 'other-host-peer': not on this host"
+        in caplog.text
+    )
+    assert (
+        "not forwarding to unit 'origin-peer': the announcement came from "
+        "it at 127.0.0.1:45003" in caplog.text
+    )
+    assert "forwarded 127.0.0.1:45003 to 1 of 3 known peer(s)" in caplog.text
+    # and indeed only the local peer received the announcement
+    assert [addr for _, addr in discovery._transport.sent] == [
+        ("127.0.0.1", 45001)
+    ]
+
+
+def test_leaf_logs_that_it_never_forwards(tmp_path, caplog):
+    discovery = make_offline_discovery(tmp_path, mode="leaf")
+    add_peer(discovery, "local-peer")
+    with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+        discovery._forward(
+            b"announcement", ("127.0.0.1", 45001), "local-peer"
+        )
+    assert "nothing forwarded, this unit is a leaf" in caplog.text
+    assert "forwarded to unit" not in caplog.text
+    assert discovery._transport.sent == []
+
+
+class _BrokenTransport(_FakeTransport):
+    """A UDP transport whose sends always fail."""
+
+    def sendto(self, data, addr):
+        raise OSError("network is down")
+
+
+def test_failed_forward_is_logged_and_not_counted(tmp_path, caplog):
+    discovery = make_offline_discovery(tmp_path)
+    discovery._transport = _BrokenTransport()
+    add_peer(discovery, "local-peer", unit_port=45001)
+    add_peer(discovery, "second-peer", unit_port=45002)
+    with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+        discovery._forward(b"announcement", None, None)
+    assert (
+        "cannot forward to unit 'local-peer' at 127.0.0.1:45001: "
+        "network is down" in caplog.text
+    )
+    assert (
+        "forwarded its own announcement to 0 of 2 known peer(s)"
+        in caplog.text
+    )
 
 

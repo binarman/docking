@@ -823,6 +823,16 @@ class Discovery:
             self._config.trusted_token,
         ).encode("utf-8")
         address = self._config.discovery_address or _DISCOVERY_DEFAULT_ADDRESS
+        logger.debug(
+            "discovery: announcing unit %r (UDP port %s, TCP port %s) to "
+            "%s:%s in %s mode",
+            self._unit.identifier,
+            self._udp_port,
+            self._config.port,
+            address,
+            self._config.discovery_port,
+            self._mode,
+        )
         try:
             self._transport.sendto(
                 message, (address, self._config.discovery_port)
@@ -843,14 +853,34 @@ class Discovery:
         ``origin_addr``) is never sent its own announcement back.
         """
         if self._mode != "root":
+            logger.debug(
+                "discovery: nothing forwarded, this unit is a %s", self._mode
+            )
             return
+        source = (
+            "its own announcement"
+            if origin_addr is None
+            else "%s:%s" % (origin_addr[0], origin_addr[1])
+        )
+        forwarded = 0
         for unit_id, peer in list(self._peers.items()):
-            if not peer["local"] or unit_id == origin_unit_id:
+            if not peer["local"]:
+                logger.debug(
+                    "discovery: not forwarding to unit %r: not on this host",
+                    unit_id,
+                )
                 continue
-            if origin_addr is not None and tuple(origin_addr[:2]) == (
-                peer["address"],
-                peer["unit_port"],
+            if unit_id == origin_unit_id or (
+                origin_addr is not None
+                and tuple(origin_addr[:2])
+                == (peer["address"], peer["unit_port"])
             ):
+                logger.debug(
+                    "discovery: not forwarding to unit %r: the announcement "
+                    "came from it at %s",
+                    unit_id,
+                    source,
+                )
                 continue
             try:
                 self._transport.sendto(
@@ -864,12 +894,29 @@ class Discovery:
                     peer["unit_port"],
                     error,
                 )
+                continue
+            forwarded += 1
+            logger.debug(
+                "discovery: forwarded to unit %r at %s:%d",
+                unit_id,
+                peer["address"],
+                peer["unit_port"],
+            )
+        logger.debug(
+            "discovery: forwarded %s to %d of %d known peer(s)",
+            source,
+            forwarded,
+            len(self._peers),
+        )
 
 
     # --------------------------------------------------------------- receiving
 
     def handle_datagram(self, data, addr):
         """Process one received UDP datagram (a peer announcement)."""
+        logger.debug(
+            "discovery: %d byte datagram from %s:%s", len(data), *addr
+        )
         try:
             message = data.decode("utf-8")
         except UnicodeDecodeError:
@@ -897,7 +944,24 @@ class Discovery:
             )
             return
         if unit_id == self._unit.identifier:
-            return  # own announcement coming back (e.g. broadcast loopback)
+            logger.debug(
+                "discovery: ignoring the announcement of unit %r from %s:%s, "
+                "it is this unit itself (announcement coming back through the "
+                "broadcast)",
+                unit_id,
+                addr[0],
+                addr[1],
+            )
+            return
+        logger.debug(
+            "discovery: valid announcement of unit %r from %s:%s "
+            "(UDP port %s, TCP port %s)",
+            unit_id,
+            addr[0],
+            addr[1],
+            unit_port,
+            tcp_port,
+        )
         self._register_peer(unit_id, unit_port, tcp_port, addr)
         self._forward(data, addr, unit_id)
 
