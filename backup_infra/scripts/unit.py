@@ -601,7 +601,10 @@ def _local_interface_addresses():
     try:
         infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
     except OSError:
-        logger.warning("discovery: cannot enumerate local interfaces")
+        logger.warning(
+            "discovery: cannot enumerate local interfaces, assuming only %s",
+            ", ".join(sorted(addresses)),
+        )
         return addresses
     for info in infos:
         addresses.add(info[4][0])
@@ -750,6 +753,11 @@ class Discovery:
             "discovery: %s mode, listening on UDP port %d",
             mode,
             self._udp_port,
+        )
+        logger.debug(
+            "discovery: local interface addresses: %s (announcements coming "
+            "from one of them are units of this machine)",
+            ", ".join(sorted(self._local_addresses)) or "none",
         )
         await self.announce()
         self._task = asyncio.create_task(
@@ -968,8 +976,20 @@ class Discovery:
     def _register_peer(self, unit_id, unit_port, tcp_port, addr):
         """Record one valid announcement and register the peer as remote."""
         address = addr[0]
-        local = (
-            _is_loopback_address(address) or address in self._local_addresses
+        loopback = _is_loopback_address(address)
+        local = loopback or address in self._local_addresses
+        if loopback:
+            reason = "a loopback address"
+        elif local:
+            reason = "one of the local interface addresses"
+        else:
+            reason = "not one of the local interface addresses"
+        logger.debug(
+            "discovery: unit %r announced from %s: %s, so it is a %s unit",
+            unit_id,
+            address,
+            reason,
+            "local" if local else "remote",
         )
         is_new = unit_id not in self._peers
         self._peers[unit_id] = {

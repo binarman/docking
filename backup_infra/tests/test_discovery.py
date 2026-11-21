@@ -528,16 +528,17 @@ def test_discovery_requires_a_configured_port(tmp_path):
 
 
 def make_offline_discovery(
-    tmp_path, identifier="unit-a", udp_port=45000, mode="root"
+    tmp_path, identifier="unit-a", udp_port=45000, mode="root", **overrides
 ):
     """A discovery that never bound a socket: fake transport, fixed mode.
 
     Enough of a started unit to call :meth:`Discovery.announce`,
     :meth:`Discovery.handle_datagram` and :meth:`Discovery._forward`
-    without touching the network.
+    without touching the network.  Extra keyword arguments are passed to
+    :func:`make_discovery` (for instance ``local_addresses``).
     """
     unit = make_unit(tmp_path, identifier, free_tcp_port(), udp_port)
-    discovery = make_discovery(unit)
+    discovery = make_discovery(unit, **overrides)
     discovery._transport = _FakeTransport()
     discovery._udp_port = udp_port
     discovery._mode = mode
@@ -675,5 +676,60 @@ def test_failed_forward_is_logged_and_not_counted(tmp_path, caplog):
         "forwarded its own announcement to 0 of 2 known peer(s)"
         in caplog.text
     )
+
+
+def test_local_addresses_are_logged_on_start(tmp_path, caplog):
+    """The addresses that make an announcement come from this machine."""
+
+    async def scenario():
+        unit = make_unit(tmp_path, "unit-a", free_tcp_port(), free_port())
+        discovery = make_discovery(
+            unit, local_addresses={"192.0.2.9", "192.0.2.7"}
+        )
+        with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+            await discovery.start()
+        try:
+            lines = [
+                record.getMessage()
+                for record in caplog.records
+                if "local interface addresses" in record.getMessage()
+            ]
+        finally:
+            await discovery.stop()
+        assert len(lines) == 1, caplog.text
+        # the addresses of the constructor, sorted, and nothing but those
+        assert lines[0] == (
+            "discovery: local interface addresses: 192.0.2.7, 192.0.2.9 "
+            "(announcements coming from one of them are units of this "
+            "machine)"
+        )
+        assert discovery._local_addresses == {"192.0.2.7", "192.0.2.9"}
+
+    asyncio.run(scenario())
+
+
+def test_local_or_remote_verdict_is_logged(tmp_path, caplog):
+    """Why an announced unit counts as a unit of this machine or not."""
+    discovery = make_offline_discovery(tmp_path, local_addresses={"192.0.2.7"})
+    announcements = [
+        ("unit-loopback", "127.0.0.1", "a loopback address"),
+        ("unit-local-if", "192.0.2.7", "one of the local interface addresses"),
+        ("unit-remote", "203.0.113.9", "not one of the local interface addresses"),
+    ]
+    with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+        for unit_id, address, _ in announcements:
+            message = unit_module.generate_discovery(
+                unit_id, 45001, 18090, "token"
+            )
+            discovery.handle_datagram(message.encode("utf-8"), (address, 45001))
+    for unit_id, address, reason in announcements:
+        expected = f"unit {unit_id!r} announced from {address}: {reason}"
+        assert expected in caplog.text, caplog.text
+    # the verdict of the log lines is the one that is registered
+    assert [(entry[0], entry[4]) for entry in discovery.known_units()] == [
+        ("unit-local-if", True),
+        ("unit-loopback", True),
+        ("unit-remote", False),
+    ]
 
 
