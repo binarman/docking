@@ -21,6 +21,7 @@ import urllib.request
 from datetime import datetime
 
 import pytest
+import yaml
 
 from manifest import Manifest, current_hash, hash_file
 from network_messages import (
@@ -31,6 +32,7 @@ from network_messages import (
 )
 from unit import Unit, _handle_connection, main, next_cron_match, schedule_loop
 from unit_config import UnitConfig
+from test_unit_config import valid_fields
 
 
 # ------------------------------------------------------------------ helpers
@@ -581,4 +583,71 @@ def test_main_rejects_invalid_config(tmp_path, capsys):
 def test_main_rejects_missing_config(tmp_path, capsys):
     assert main(["--config", str(tmp_path / "absent.yaml")]) == 1
     assert "error:" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- log verbosity
+
+
+@pytest.fixture
+def restore_log_levels():
+    """Undo the root/``beacon`` levels that ``main`` configures."""
+    saved = {name: logging.getLogger(name).level for name in ("", "beacon")}
+    yield
+    for name, level in saved.items():
+        logging.getLogger(name).setLevel(level)
+
+
+def write_valid_config(tmp_path):
+    """Write a valid config file (the readme example) and return its path."""
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(valid_fields()), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def no_run(monkeypatch):
+    """Stub out ``run``: ``main`` returns after configuring the logging."""
+
+    async def stop_right_away(config):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("unit.run", stop_right_away)
+
+
+def test_main_defaults_to_info_logging(tmp_path, no_run, restore_log_levels):
+    path = write_valid_config(tmp_path)
+    assert main(["--config", str(path)]) == 0
+    assert logging.getLogger("beacon").level == logging.INFO
+    assert logging.getLogger("beacon.unit").getEffectiveLevel() == logging.INFO
+
+
+def test_main_log_level_debug(tmp_path, no_run, restore_log_levels):
+    path = write_valid_config(tmp_path)
+    assert main(["--config", str(path), "--log-level", "DEBUG"]) == 0
+    assert logging.getLogger("beacon.unit").getEffectiveLevel() == logging.DEBUG
+
+
+def test_main_verbose_flag_enables_debug(tmp_path, no_run, restore_log_levels):
+    path = write_valid_config(tmp_path)
+    assert main(["--config", str(path), "--verbose"]) == 0
+    assert logging.getLogger("beacon.unit").getEffectiveLevel() == logging.DEBUG
+    assert main(["--config", str(path), "-v"]) == 0
+    assert logging.getLogger("beacon.unit").getEffectiveLevel() == logging.DEBUG
+
+
+def test_main_log_level_warning(tmp_path, no_run, restore_log_levels):
+    path = write_valid_config(tmp_path)
+    assert main(["--config", str(path), "--log-level", "warning"]) == 0
+    assert (
+        logging.getLogger("beacon.unit").getEffectiveLevel()
+        == logging.WARNING
+    )
+
+
+def test_main_rejects_unknown_log_level(tmp_path, capsys):
+    path = write_valid_config(tmp_path)
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--config", str(path), "--log-level", "chatty"])
+    assert exit_info.value.code == 2
+    assert "--log-level" in capsys.readouterr().err
 

@@ -45,7 +45,10 @@ On start up the script:
 6. runs until it receives SIGINT or SIGTERM, then shuts down cleanly.
 
 Usage:
-    unit.py [--config FILE]
+    unit.py [--config FILE] [--log-level LEVEL | -v]
+
+``--log-level`` takes ``debug``, ``info`` (the default), ``warning``
+or ``error``; ``-v``/``--verbose`` is a shortcut for ``debug``.
 """
 
 import argparse
@@ -1130,6 +1133,33 @@ async def run(config):
             await discovery.stop()
 
 
+#: Log levels accepted by the ``--log-level`` command line option.
+_LOG_LEVELS = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+}
+
+
+def setup_logging(level=logging.INFO):
+    """Log to stdout at ``level`` (see the ``--log-level`` option).
+
+    The level is set on the ``beacon`` logger as well, not only on the
+    root logger: :func:`logging.basicConfig` does nothing when logging
+    was already configured (tests, an embedding script), and an explicit
+    level keeps the requested verbosity in that case too.  ``debug`` is
+    what surfaces the chatty discovery details (ignored datagrams,
+    forwarding failures, UDP errors).
+    """
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        stream=sys.stdout,
+    )
+    logging.getLogger("beacon").setLevel(level)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run a Beacon backup unit.")
     parser.add_argument(
@@ -1137,17 +1167,29 @@ def main(argv=None):
         default="config.yaml",
         help="unit config file to load (default: config.yaml)",
     )
+    parser.add_argument(
+        "--log-level",
+        default="info",
+        choices=tuple(_LOG_LEVELS),
+        type=str.lower,
+        metavar="LEVEL",
+        help="log verbosity: %s (default: %%(default)s)"
+        % ", ".join(_LOG_LEVELS),
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="shortcut for --log-level debug",
+    )
     args = parser.parse_args(argv)
+    level = _LOG_LEVELS["debug" if args.verbose else args.log_level]
     try:
         config = UnitConfig.load(args.config)
     except (OSError, ValueError, yaml.YAMLError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-8s %(message)s",
-        stream=sys.stdout,
-    )
+    setup_logging(level)
     try:
         asyncio.run(run(config))
     except KeyboardInterrupt:
