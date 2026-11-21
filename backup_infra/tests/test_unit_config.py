@@ -426,3 +426,52 @@ def test_repository_names_must_be_unique():
             )
         )
 
+
+# ---------------------------------------------------------------- discovery
+
+def test_discovery_fields_default_to_none():
+    config = UnitConfig(**minimal_kwargs())
+    assert config.discovery_port is None
+    assert config.discovery_address is None
+
+
+def test_discovery_fields_are_accessible():
+    config = UnitConfig(
+        **minimal_kwargs(discovery_port=8091, discovery_address="192.168.1.255")
+    )
+    assert config.discovery_port == 8091
+    assert config.discovery_address == "192.168.1.255"
+
+
+@pytest.mark.parametrize("value", ("8090", 8090.5, True, [8090]))
+def test_discovery_port_must_be_an_integer(value):
+    with pytest.raises(ValueError, match="discovery_port must be an integer"):
+        UnitConfig(**minimal_kwargs(discovery_port=value))
+
+
+@pytest.mark.parametrize("value", (-1, 0, 65536, 1 << 32))
+def test_discovery_port_out_of_range(value):
+    with pytest.raises(
+        ValueError, match="discovery_port must be in range 1-65535"
+    ):
+        UnitConfig(**minimal_kwargs(discovery_port=value))
+
+
+@pytest.mark.parametrize("value", (123, ["192.168.1.255"]))
+def test_discovery_address_must_be_a_string(value):
+    with pytest.raises(ValueError, match="discovery_address must be a string"):
+        UnitConfig(**minimal_kwargs(discovery_address=value))
+
+
+def test_discovery_address_must_not_be_empty():
+    with pytest.raises(ValueError, match="discovery_address must not be empty"):
+        UnitConfig(**minimal_kwargs(discovery_address="  "))
+
+
+def test_discovery_fields_load_from_yaml(tmp_path):
+    config = load_config(
+        tmp_path, discovery_port=8091, discovery_address="192.168.1.255"
+    )
+    assert config.discovery_port == 8091
+    assert config.discovery_address == "192.168.1.255"
+

@@ -73,8 +73,10 @@ At this stage, `network_messages.py` should implement the following interfaces:
 - `generate_status(manifests: list of manifests) -> string` generates JSON with the unit status and a list of base64-encoded manifests;
 - `parse_status(string) -> tuple(status, list of manifests)` decodes the string encoded by generate_status;
 - `generate_network_status(remotes: list of tuples(name, status, last sync time)) -> string` generates a JSON string containing the network status;
-- `parse_network_status(string) -> list of tuples(name, status, last sync time)` decodes the JSON into the network status.
-- The `discover` and `file` related handlers are TBD
+- `parse_network_status(string) -> list of tuples(name, status, last sync time)` decodes the JSON into the network status;
+- `generate_discovery(unit_identifier: string, unit_port: integer, tcp_port: integer, trusted_token: string) -> string` generates the UDP network discovery announcement (unit name, unit UDP port, unit TCP port and trusted token);
+- `parse_discovery(string) -> tuple(unit identifier, unit UDP port, unit TCP port, trusted token)` decodes the discovery announcement.
+- The `file` related handlers are TBD
 
 ## desktop_notify.py behavior
 

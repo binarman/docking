@@ -9,6 +9,8 @@ Covers the "network_messages.py interfaces" section of
 - the ``/status`` message (``generate_status`` / ``parse_status``)
 - the ``/network`` message (``generate_network_status`` /
   ``parse_network_status``)
+- the UDP ``discover`` message (``generate_discovery`` /
+  ``parse_discovery``)
 - the ``/summary`` HTML page (``generate_summary``)
 """
 
@@ -27,10 +29,12 @@ from network_messages import (
     decode_manifest,
     encode_manifest,
     format_uptime,
+    generate_discovery,
     generate_network_status,
     generate_status,
     generate_summary,
     manifest_status,
+    parse_discovery,
     parse_network_status,
     parse_status,
 )
@@ -628,3 +632,106 @@ def test_summary_rejects_invalid_arguments():
         generate_summary("pc", 60, ["not a manifest"], [])
     with pytest.raises(ValueError):
         generate_summary("pc", 60, [], [("a", "broken", None)])
+
+
+# ------------------------------------------------------------ discovery message
+
+
+def test_generate_discovery_format():
+    message = generate_discovery(
+        "laptop", 8091, 8090, "Hello my backup network"
+    )
+    assert json.loads(message) == {
+        "unit_id": "laptop",
+        "unit_port": 8091,
+        "tcp_port": 8090,
+        "trusted_token": "Hello my backup network",
+    }
+
+
+def test_discovery_round_trip():
+    message = generate_discovery("laptop", 8091, 8090, "token")
+    assert parse_discovery(message) == ("laptop", 8091, 8090, "token")
+
+
+@pytest.mark.parametrize("identifier", ("", "   ", None, 42))
+def test_generate_discovery_rejects_identifier(identifier):
+    with pytest.raises(
+        ValueError, match="unit identifier must be a non-empty"
+    ):
+        generate_discovery(identifier, 8091, 8090, "token")
+
+
+@pytest.mark.parametrize("port", ("8091", 8091.5, True, 0, -1, 65536, [8091]))
+def test_generate_discovery_rejects_ports(port):
+    with pytest.raises(ValueError, match="unit_port must be"):
+        generate_discovery("laptop", port, 8090, "token")
+    with pytest.raises(ValueError, match="tcp_port must be"):
+        generate_discovery("laptop", 8091, port, "token")
+
+
+def test_generate_discovery_rejects_non_string_token():
+    with pytest.raises(ValueError, match="trusted token must be a string"):
+        generate_discovery("laptop", 8091, 8090, 42)
+
+
+def test_parse_discovery_rejects_non_string():
+    with pytest.raises(ValueError, match="discovery message must be a string"):
+        parse_discovery(b'{"unit_id": "laptop"}')
+
+
+def test_parse_discovery_rejects_invalid_json():
+    with pytest.raises(ValueError, match="discovery message is not valid JSON"):
+        parse_discovery("nonsense")
+
+
+def test_parse_discovery_rejects_non_object():
+    with pytest.raises(
+        ValueError, match="discovery message must be a JSON object"
+    ):
+        parse_discovery("[1, 2]")
+
+
+@pytest.mark.parametrize(
+    "missing", ("unit_id", "unit_port", "tcp_port", "trusted_token")
+)
+def test_parse_discovery_rejects_missing_field(missing):
+    message = json.loads(generate_discovery("laptop", 8091, 8090, "token"))
+    del message[missing]
+    if missing == "unit_id":
+        pattern = "missing a valid unit id"
+    else:
+        pattern = rf"missing the '{missing}' field"
+    with pytest.raises(ValueError, match=pattern):
+        parse_discovery(json.dumps(message))
+
+
+@pytest.mark.parametrize("unit_id", ("", 42, None))
+def test_parse_discovery_rejects_bad_unit_id(unit_id):
+    with pytest.raises(ValueError, match="missing a valid unit id"):
+        parse_discovery(
+            json.dumps(
+                {
+                    "unit_id": unit_id,
+                    "unit_port": 8091,
+                    "tcp_port": 8090,
+                    "trusted_token": "token",
+                }
+            )
+        )
+
+
+@pytest.mark.parametrize("port", ("8091", 0, 65536, True, None))
+def test_parse_discovery_rejects_bad_ports(port):
+    for field in ("unit_port", "tcp_port"):
+        message = json.loads(generate_discovery("laptop", 8091, 8090, "token"))
+        message[field] = port
+        with pytest.raises(ValueError, match="must be an integer|in range"):
+            parse_discovery(json.dumps(message))
+
+
+def test_parse_discovery_rejects_non_string_token():
+    message = json.loads(generate_discovery("laptop", 8091, 8090, "token"))
+    message["trusted_token"] = 42
+    with pytest.raises(ValueError, match="trusted token must be a string"):
+        parse_discovery(json.dumps(message))

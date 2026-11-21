@@ -42,6 +42,18 @@ unit::
 
     [{"name": ..., "status": ..., "last_sync": "<ISO 8601>" | null}]
 
+``discover`` (unit x unit, UDP announcement, see the "Network discovery
+protocol" section of ``docs/software_architecture.md``) -- produced by
+:func:`generate_discovery` and decoded by :func:`parse_discovery`.  A
+compact JSON object::
+
+    {
+        "unit_id": "<unit name>",
+        "unit_port": <UDP port the announcing unit listens on>,
+        "tcp_port": <announcing unit's TCP port>,
+        "trusted_token": "<shared network token>"
+    }
+
 ``/summary`` (unit x user) -- :func:`generate_summary` renders the HTML
 page that answers a GET to ``<unit_address>/summary``.
 
@@ -480,6 +492,92 @@ def parse_network_status(message):
                 )
         remotes.append((name, status, parsed_sync))
     return remotes
+
+
+# ------------------------------------------------------------- discovery message
+
+
+def _validate_port(field, value):
+    """Validate a network port from a discovery message; 1-65535."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"{field} must be an integer, got {_type_name(value)}"
+        )
+    if not 1 <= value <= 65535:
+        raise ValueError(f"{field} must be in range 1-65535, got {value}")
+    return value
+
+
+def generate_discovery(unit_identifier, unit_port, tcp_port, trusted_token):
+    """Encode a UDP network discovery announcement as a JSON string.
+
+    ``unit_identifier`` is the announcing unit's name, ``unit_port`` the
+    UDP port the unit listens on for discovery, ``tcp_port`` the unit's
+    TCP (HTTP) port and ``trusted_token`` the shared network token; the
+    receiver only trusts the announcement when the token equals its own
+    (see the "Network discovery protocol" section of
+    ``docs/software_architecture.md``).
+    """
+    if not isinstance(unit_identifier, str) or not unit_identifier.strip():
+        raise ValueError(
+            f"unit identifier must be a non-empty string, "
+            f"got {unit_identifier!r}"
+        )
+    unit_port = _validate_port("unit_port", unit_port)
+    tcp_port = _validate_port("tcp_port", tcp_port)
+    if not isinstance(trusted_token, str):
+        raise ValueError(
+            f"trusted token must be a string, got {_type_name(trusted_token)}"
+        )
+    payload = {
+        "unit_id": unit_identifier,
+        "unit_port": unit_port,
+        "tcp_port": tcp_port,
+        "trusted_token": trusted_token,
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def parse_discovery(message):
+    """Decode a discovery announcement produced by :func:`generate_discovery`.
+
+    Returns a ``(unit identifier, unit UDP port, unit TCP port, trusted
+    token)`` tuple.  The trusted token is returned verbatim; comparing
+    it with the local token is the caller's decision.  Raises
+    ``ValueError`` for messages that do not match the expected format.
+    """
+    if not isinstance(message, str):
+        raise ValueError(
+            f"discovery message must be a string, got {_type_name(message)}"
+        )
+    try:
+        data = json.loads(message)
+    except ValueError:
+        raise ValueError("discovery message is not valid JSON")
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"discovery message must be a JSON object, "
+            f"got {_type_name(data)}"
+        )
+    unit_id = data.get("unit_id")
+    if not isinstance(unit_id, str) or not unit_id:
+        raise ValueError(
+            f"discovery message is missing a valid unit id: {data!r}"
+        )
+    for field in ("unit_port", "tcp_port", "trusted_token"):
+        if field not in data:
+            raise ValueError(
+                f"discovery message is missing the {field!r} field: {data!r}"
+            )
+    unit_port = _validate_port("discovery unit port", data["unit_port"])
+    tcp_port = _validate_port("discovery unit TCP port", data["tcp_port"])
+    trusted_token = data["trusted_token"]
+    if not isinstance(trusted_token, str):
+        raise ValueError(
+            f"discovery trusted token must be a string, "
+            f"got {_type_name(trusted_token)}"
+        )
+    return unit_id, unit_port, tcp_port, trusted_token
 
 
 # ------------------------------------------------------------- summary page

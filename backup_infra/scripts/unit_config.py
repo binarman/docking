@@ -9,6 +9,10 @@ from a YAML file -- perform the same verification and raise ``ValueError``
 on invalid input:
 
 - ``port``               : integer network port to listen on (1-65535).
+- ``discovery_port``     : optional integer UDP port used for network
+  discovery (``None`` disables the network discovery protocol).
+- ``discovery_address``  : optional address the discovery announcements are
+  broadcast to (defaults to the limited broadcast address at run time).
 - ``address``            : optional address to listen on.
 - ``identifier``         : unit name, expected to be unique in the backup
   network.
@@ -53,6 +57,8 @@ _INT_RE = re.compile(r"-?\d+")
 #: Known top-level config fields (see the readme "Config file" section).
 _CONFIG_FIELDS = (
     "port",
+    "discovery_port",
+    "discovery_address",
     "address",
     "identifier",
     "trusted_token",
@@ -140,6 +146,16 @@ def _validate_port(port):
     if not 1 <= port <= 65535:
         raise ValueError(f"port must be in range 1-65535, got {port}")
     return port
+
+
+def _validate_optional_port(field, value):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer, got {_type_name(value)}")
+    if not 1 <= value <= 65535:
+        raise ValueError(f"{field} must be in range 1-65535, got {value}")
+    return value
 
 
 def _validate_delay(field, value):
@@ -230,6 +246,8 @@ class UnitConfig:
         self,
         *,
         port=None,
+        discovery_port=None,
+        discovery_address=None,
         address=None,
         identifier=None,
         trusted_token=None,
@@ -241,6 +259,12 @@ class UnitConfig:
         manifest_storage=None,
     ):
         self._port = _validate_port(port)
+        self._discovery_port = _validate_optional_port(
+            "discovery_port", discovery_port
+        )
+        self._discovery_address = _validate_optional_string(
+            "discovery_address", discovery_address
+        )
         self._address = _validate_optional_string("address", address)
         self._identifier = _validate_required_string("identifier", identifier)
         self._trusted_token = _validate_required_string(
@@ -273,6 +297,17 @@ class UnitConfig:
     def port(self):
         """Network port to listen on (1-65535)."""
         return self._port
+
+    @property
+    def discovery_port(self):
+        """UDP port used for network discovery (``None`` if not set)."""
+        return self._discovery_port
+
+    @property
+    def discovery_address(self):
+        """Broadcast address for discovery announcements (``None`` if not
+        set; the unit falls back to the limited broadcast address)."""
+        return self._discovery_address
 
     @property
     def address(self):
@@ -348,12 +383,15 @@ class UnitConfig:
     def __repr__(self):
         repos = ", ".join(f"{repo.name!r}" for repo in self._repositories)
         return (
-            "UnitConfig(port=%r, address=%r, identifier=%r, "
+            "UnitConfig(port=%r, discovery_port=%r, discovery_address=%r, "
+            "address=%r, identifier=%r, "
             "trusted_token=<set>, sync_delay=%r, sync_schedule=%r, "
             "integrity_delay=%r, integrity_schedule=%r, repository=[%s], "
             "manifest_storage=%r)"
             % (
                 self._port,
+                self._discovery_port,
+                self._discovery_address,
                 self._address,
                 self._identifier,
                 self._sync_delay,

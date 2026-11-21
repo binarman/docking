@@ -7,6 +7,12 @@ menu mirrors the config fields; picking a field prompts for its value.
 The ``repository`` field has its own submenu where entries can be
 added, edited or deleted.
 
+Network discovery is configured by the optional ``discovery_port`` and
+``discovery_address`` fields: leaving ``discovery_port`` empty keeps
+network discovery disabled (the unit then only serves its own status
+endpoints), and leaving ``discovery_address`` empty makes the unit
+announce to the limited broadcast address (255.255.255.255).
+
 Every answer is validated before it is accepted, and the config is
 checked with ``UnitConfig`` again before writing, so the produced file
 always loads back as a valid unit config.  If the target file already
@@ -36,6 +42,8 @@ class Field:
 
 MENU_FIELDS = (
     Field("port", "port"),
+    Field("discovery_port", "port"),
+    Field("discovery_address", "optional_string"),
     Field("address", "optional_string"),
     Field("identifier", "required_string"),
     Field("trusted_token", "required_string"),
@@ -62,6 +70,12 @@ _PROMPT_HINTS = {
     "optional_string": " (empty to clear)",
     "delay": " (seconds, empty to clear)",
     "schedule": " (minute hour day month weekday, empty to clear)",
+}
+
+# Hints that replace the hint of the field kind for a single field.
+_PROMPT_HINTS_BY_KEY = {
+    "discovery_port": " (1-65535, empty to disable network discovery)",
+    "discovery_address": " (broadcast address, empty for 255.255.255.255)",
 }
 
 
@@ -147,7 +161,12 @@ class InstallWizard:
     def _field_prompt(self, field):
         value = self._values.get(field.key)
         current = "" if value is None else f" (current: {self._format_value(field, value)})"
-        return f"{field.key}{current}{_PROMPT_HINTS[field.kind]}: "
+        return f"{field.key}{current}{self._prompt_hint(field)}: "
+
+    @staticmethod
+    def _prompt_hint(field):
+        """The prompt hint of a field: its own override or the kind's hint."""
+        return _PROMPT_HINTS_BY_KEY.get(field.key, _PROMPT_HINTS[field.kind])
 
     def _parse_scalar(self, field, raw):
         """Validate ``raw`` for a scalar field; return None if invalid."""

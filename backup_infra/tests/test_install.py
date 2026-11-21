@@ -3,6 +3,8 @@
 Covers the "Unit configuration" section of the readme:
 
 - menu navigation and scalar field editing (port, strings, delay, schedule)
+- the optional network discovery fields (``discovery_port``,
+  ``discovery_address``): validation, prompts and save round-trip
 - inline validation before a value is accepted
 - mutual exclusion of ``*_delay`` / ``*_schedule`` pairs
 - the repository submenu (add / edit / delete, unique names)
@@ -51,19 +53,40 @@ def valid_yaml(tmp_path):
     return path
 
 
+def field_index(key):
+    """The 0-based position of a menu field (the menu mirrors the config)."""
+    return [entry.key for entry in install.MENU_FIELDS].index(key)
+
+
+def field_no(key):
+    """The wizard menu number of a config field."""
+    return str(field_index(key) + 1)
+
+
 # ---------------------------------------------------------------- menu flow
+
+
+def test_menu_lists_the_discovery_fields(tmp_path):
+    path = tmp_path / "config.yaml"
+    _, output = run_wizard(path, ["q"])
+    joined = "\n".join(output)
+    assert f"{field_no('discovery_port'):>2}. discovery_port" in joined
+    assert f"{field_no('discovery_address'):>2}. discovery_address" in joined
+    # discovery is optional: unset fields are offered as such
+    assert "discovery_port     : (not set)" in joined
+    assert "discovery_address  : (not set)" in joined
 
 
 def test_full_save_round_trip(tmp_path):
     path = tmp_path / "out" / "config.yaml"
     answers = [
-        "1", "8080",  # port
-        "3", "id-1",  # identifier
-        "4", "tok-abc",  # trusted_token
-        "6", "5 * * * *",  # sync_schedule
-        "7", "30",  # integrity_delay
-        "9", "a", "repo-a", "/repos/a", "q",  # repository entry
-        "10", "/units/unit1/manifests",  # manifest_storage
+        field_no("port"), "8080",
+        field_no("identifier"), "id-1",
+        field_no("trusted_token"), "tok-abc",
+        field_no("sync_schedule"), "5 * * * *",
+        field_no("integrity_delay"), "30",
+        field_no("repository"), "a", "repo-a", "/repos/a", "q",
+        field_no("manifest_storage"), "/units/unit1/manifests",
         "s", "q",  # save, quit
     ]
     wizard, output = run_wizard(path, answers)
@@ -83,6 +106,9 @@ def test_full_save_round_trip(tmp_path):
     # unset fields are omitted entirely
     assert "address" not in data
     assert "sync_delay" not in data
+    # discovery stays out of the file while it is not configured
+    assert "discovery_port" not in data
+    assert "discovery_address" not in data
     # the written file loads back as a valid config
     config = UnitConfig.load(path)
     assert config.port == 8080
@@ -92,7 +118,7 @@ def test_full_save_round_trip(tmp_path):
 
 def test_quit_without_saving(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, output = run_wizard(path, ["1", "8080", "q"])
+    wizard, output = run_wizard(path, [field_no("port"), "8080", "q"])
     assert not wizard.saved
     assert wizard.values["port"] == 8080
     assert not path.exists()
@@ -101,7 +127,7 @@ def test_quit_without_saving(tmp_path):
 
 def test_invalid_menu_choice_reprompts(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, _ = run_wizard(path, ["99", "x", "1", "22", "q"])
+    wizard, _ = run_wizard(path, ["99", "x", field_no("port"), "22", "q"])
     assert wizard.values["port"] == 22
 
 # ------------------------------------------------------------- scalar fields
@@ -109,7 +135,9 @@ def test_invalid_menu_choice_reprompts(tmp_path):
 
 def test_port_validation(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, output = run_wizard(path, ["1", "0", "65536", "abc", "8080", "q"])
+    wizard, output = run_wizard(
+        path, [field_no("port"), "0", "65536", "abc", "8080", "q"]
+    )
     assert wizard.values["port"] == 8080
     joined = "\n".join(output)
     assert "port must be in range 1-65535" in joined
@@ -118,21 +146,23 @@ def test_port_validation(tmp_path):
 
 def test_schedule_validation(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, output = run_wizard(path, ["6", "bad", "5 5 * * *", "q"])
+    wizard, output = run_wizard(
+        path, [field_no("sync_schedule"), "bad", "5 5 * * *", "q"]
+    )
     assert wizard.values["sync_schedule"] == "5 5 * * *"
     assert "schedule 'bad' must have exactly 5 fields" in "\n".join(output)
 
 
 def test_delay_must_be_positive(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, _ = run_wizard(path, ["5", "0", "15", "q"])
+    wizard, _ = run_wizard(path, [field_no("sync_delay"), "0", "15", "q"])
     assert wizard.values["sync_delay"] == 15
 
 
 def test_optional_field_cleared_when_empty(tmp_path):
     path = tmp_path / "config.yaml"
     wizard, output = run_wizard(
-        path, ["2", "", "q"], values={"address": "0.0.0.0"}
+        path, [field_no("address"), "", "q"], values={"address": "0.0.0.0"}
     )
     assert wizard.values["address"] is None
     assert "address cleared." in "\n".join(output)
@@ -140,14 +170,23 @@ def test_optional_field_cleared_when_empty(tmp_path):
 
 def test_required_field_rejects_empty(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, output = run_wizard(path, ["3", "", "id-1", "q"])
+    wizard, output = run_wizard(
+        path, [field_no("identifier"), "", "id-1", "q"]
+    )
     assert wizard.values["identifier"] == "id-1"
     assert "required and cannot be empty" in "\n".join(output)
 
 
 def test_delay_schedule_mutual_exclusion(tmp_path):
     path = tmp_path / "config.yaml"
-    wizard, output = run_wizard(path, ["5", "20", "6", "5 * * * *", "q"])
+    wizard, output = run_wizard(
+        path,
+        [
+            field_no("sync_delay"), "20",
+            field_no("sync_schedule"), "5 * * * *",
+            "q",
+        ],
+    )
     assert wizard.values["sync_delay"] is None
     assert wizard.values["sync_schedule"] == "5 * * * *"
     assert "cleared the mutually exclusive sync_delay field" in "\n".join(output)
@@ -162,13 +201,111 @@ def test_values_property_copies_repository_entries(tmp_path):
     snapshot["repository"][0]["name"] = "changed"
     assert wizard.values["repository"][0]["name"] == "a"
 
+# ------------------------------------------------------------- discovery fields
+
+
+def test_discovery_port_validation(tmp_path):
+    path = tmp_path / "config.yaml"
+    wizard, output = run_wizard(
+        path, [field_no("discovery_port"), "0", "65536", "abc", "9100", "q"]
+    )
+    assert wizard.values["discovery_port"] == 9100
+    joined = "\n".join(output)
+    assert "port must be in range 1-65535" in joined
+    assert "is not a valid integer" in joined
+
+
+def test_discovery_field_prompts(tmp_path):
+    discovery_port = install.MENU_FIELDS[field_index("discovery_port")]
+    discovery_address = install.MENU_FIELDS[field_index("discovery_address")]
+    wizard, _ = run_wizard(
+        tmp_path / "c.yaml",
+        ["q"],
+        values={"discovery_port": 9100, "discovery_address": "192.168.1.255"},
+    )
+    # the hints explain that both fields are optional
+    assert (
+        wizard._field_prompt(discovery_port)
+        == "discovery_port (current: 9100) "
+        "(1-65535, empty to disable network discovery): "
+    )
+    assert (
+        wizard._field_prompt(discovery_address)
+        == "discovery_address (current: 192.168.1.255) "
+        "(broadcast address, empty for 255.255.255.255): "
+    )
+
+
+def test_discovery_fields_are_saved(tmp_path):
+    path = tmp_path / "config.yaml"
+    answers = [
+        field_no("discovery_port"), "9100",
+        field_no("discovery_address"), "192.168.1.255",
+        "s", "q",
+    ]
+    wizard, _ = run_wizard(path, answers, values=valid_values())
+    assert wizard.saved
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert data["discovery_port"] == 9100
+    assert data["discovery_address"] == "192.168.1.255"
+    config = UnitConfig.load(path)
+    assert config.discovery_port == 9100
+    assert config.discovery_address == "192.168.1.255"
+
+
+def test_clearing_discovery_port_disables_discovery(tmp_path):
+    path = tmp_path / "config.yaml"
+    values = valid_values()
+    values["discovery_port"] = 9100
+    values["discovery_address"] = "192.168.1.255"
+    answers = [
+        field_no("discovery_port"), "",
+        field_no("discovery_address"), "",
+        "s", "q",
+    ]
+    wizard, output = run_wizard(path, answers, values=values)
+    assert wizard.saved
+    assert wizard.values["discovery_port"] is None
+    joined = "\n".join(output)
+    assert "discovery_port cleared." in joined
+    assert "discovery_address cleared." in joined
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "discovery_port" not in data
+    assert "discovery_address" not in data
+    # the unit still loads, with network discovery disabled
+    assert UnitConfig.load(path).discovery_port is None
+
+
+def test_existing_discovery_values_are_starting_values(tmp_path, monkeypatch):
+    fields = {
+        "port": 8090,
+        "discovery_port": 9100,
+        "discovery_address": "192.168.1.255",
+        "identifier": "laptop",
+        "trusted_token": "token",
+        "sync_delay": 86400,
+        "integrity_schedule": "45 23 * * 6",
+        "repository": [{"name": "photos", "path": "/data/photos"}],
+        "manifest_storage": "/data/manifests",
+    }
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(fields), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["install.py", "--config", str(path)])
+    output = []
+    assert install.main(input_func=lambda _: "q", output_func=output.append) == 0
+    joined = "\n".join(output)
+    assert "discovery_port     : 9100" in joined
+    assert "discovery_address  : 192.168.1.255" in joined
+    assert install.load_config_values(path)["discovery_port"] == 9100
+
+
 # ------------------------------------------------------------ repository menu
 
 
 def test_repository_add_edit_delete(tmp_path):
     path = tmp_path / "config.yaml"
     answers = [
-        "9",  # repository menu
+        field_no("repository"),  # repository menu
         "a", "repo-a", "/a",  # add entry 1
         "a", "repo-b", "/b",  # add entry 2
         "e", "1", "renamed", "",  # edit entry 1: new name, keep path
@@ -189,7 +326,7 @@ def test_repository_add_edit_delete(tmp_path):
 def test_repository_duplicate_name_rejected(tmp_path):
     path = tmp_path / "config.yaml"
     answers = [
-        "9",
+        field_no("repository"),
         "a", "dup", "/a",  # first entry
         "a", "dup", "other", "/b",  # "dup" rejected, "other" accepted
         "q", "q",
@@ -205,7 +342,7 @@ def test_repository_duplicate_name_rejected(tmp_path):
 def test_repository_edit_rejects_rename_collision(tmp_path):
     path = tmp_path / "config.yaml"
     answers = [
-        "9",
+        field_no("repository"),
         "a", "one", "/a",
         "a", "two", "/b",
         "e", "2", "one", "three", "",  # "one" rejected, "three" accepted
@@ -220,7 +357,7 @@ def test_repository_edit_rejects_rename_collision(tmp_path):
 
 def test_repository_delete_without_confirm_keeps_entry(tmp_path):
     path = tmp_path / "config.yaml"
-    answers = ["9", "d", "1", "n", "q", "q"]
+    answers = [field_no("repository"), "d", "1", "n", "q", "q"]
     wizard, output = run_wizard(path, answers)
     assert wizard.values.get("repository") in (None, [])
     assert "kept repository" not in "\n".join(output)
@@ -229,7 +366,7 @@ def test_repository_delete_without_confirm_keeps_entry(tmp_path):
 def test_repository_empty_submenu_actions(tmp_path):
     path = tmp_path / "config.yaml"
     # both submenu actions are attempted while the repository menu is open
-    answers = ["9", "e", "d", "q", "q"]
+    answers = [field_no("repository"), "e", "d", "q", "q"]
     wizard, output = run_wizard(path, answers)
     assert wizard.values.get("repository") in (None, [])
     assert "no repository entries to edit" in "\n".join(output)
@@ -238,7 +375,7 @@ def test_repository_empty_submenu_actions(tmp_path):
 
 def test_repository_invalid_index(tmp_path):
     path = tmp_path / "config.yaml"
-    answers = ["9", "a", "a", "/a", "e", "7", "q", "q"]
+    answers = [field_no("repository"), "a", "a", "/a", "e", "7", "q", "q"]
     wizard, output = run_wizard(path, answers)
     assert wizard.values["repository"] == [{"name": "a", "path": "/a"}]
     assert "invalid entry number" in "\n".join(output)
@@ -250,8 +387,10 @@ def test_save_refused_when_config_invalid(tmp_path):
     path = tmp_path / "config.yaml"
     # repository + manifest set, but no sync_delay / sync_schedule
     answers = [
-        "1", "8080", "3", "id", "4", "tok",
-        "9", "a", "r", "/r", "q", "10", "/m", "s", "q",
+        field_no("port"), "8080", field_no("identifier"), "id",
+        field_no("trusted_token"), "tok",
+        field_no("repository"), "a", "r", "/r", "q",
+        field_no("manifest_storage"), "/m", "s", "q",
     ]
     wizard, output = run_wizard(path, answers)
     assert not wizard.saved
@@ -304,8 +443,11 @@ def test_save_overwrite_confirmed(tmp_path):
 def test_save_writes_parents(tmp_path):
     path = tmp_path / "nested" / "dirs" / "config.yaml"
     answers = [
-        "1", "1", "3", "i", "4", "t", "6", "5 * * * *", "7", "30",
-        "9", "a", "r", "/r", "q", "10", "/m", "s", "q",
+        field_no("port"), "1", field_no("identifier"), "i",
+        field_no("trusted_token"), "t", field_no("sync_schedule"), "5 * * * *",
+        field_no("integrity_delay"), "30",
+        field_no("repository"), "a", "r", "/r", "q",
+        field_no("manifest_storage"), "/m", "s", "q",
     ]
     wizard, _ = run_wizard(path, answers)
     assert wizard.saved
@@ -367,15 +509,16 @@ def test_main_survives_eof(tmp_path, monkeypatch):
 
 
 def test_format_value():
-    port = install.MENU_FIELDS[0]
+    port = install.MENU_FIELDS[field_index("port")]
     assert InstallWizard._format_value(port, None) == "(not set)"
     assert InstallWizard._format_value(port, 8080) == "8080"
-    repo = install.MENU_FIELDS[8]
+    assert InstallWizard._format_value(port, 8091) == "8091"  # discovery_port
+    repo = install.MENU_FIELDS[field_index("repository")]
     assert InstallWizard._format_value(repo, ["a"]) == "1 entry"
     assert InstallWizard._format_value(repo, ["a", "b"]) == "2 entries"
-    delay = install.MENU_FIELDS[4]
+    delay = install.MENU_FIELDS[field_index("sync_delay")]
     assert InstallWizard._format_value(delay, 30) == "30 s"
-    schedule = install.MENU_FIELDS[5]
+    schedule = install.MENU_FIELDS[field_index("sync_schedule")]
     assert InstallWizard._format_value(schedule, "5 * * * *") == '"5 * * * *"'
 
 
