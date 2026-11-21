@@ -114,6 +114,11 @@ _DISCOVERY_ANNOUNCE_INTERVAL = 60.0
 #: ``discovery_address`` (the limited broadcast address).
 _DISCOVERY_DEFAULT_ADDRESS = "255.255.255.255"
 
+#: Fallback target of the routing table lookup that maps the addresses of
+#: this machine (see :func:`_local_interface_addresses`); the lookup only
+#: reads the routing table, nothing is ever sent to this address.
+_DISCOVERY_ROUTE_PROBE = "8.8.8.8"
+
 
 # --------------------------------------------------------------------- cron
 
@@ -595,19 +600,73 @@ def _is_loopback_address(address):
     return address.startswith("127.")
 
 
-def _local_interface_addresses():
-    """Best-effort set of the IPv4 addresses of this machine."""
-    addresses = {"127.0.0.1"}
+def _outbound_source_address(target):
+    """The local IPv4 address used to reach ``target``, ``None`` if none.
+
+    ``connect`` on a connectionless UDP socket only consults the routing
+    table: no packet leaves the machine and no peer is involved.  It does
+    fail for addresses that cannot be route targets, a broadcast address
+    among them.
+    """
+    if not target:
+        return None
     try:
-        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect((target, 1))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
+
+def _route_probe_targets(discovery_address):
+    """The addresses to look up in the routing table to map this machine.
+
+    ``discovery_address`` describes the network the unit announces to, so
+    the interface that serves it is one of the local ones.  A broadcast
+    address itself cannot be a ``connect`` target, so the first address of
+    its network is probed instead; the lookup succeeds whether or not
+    anything answers there.  ``_DISCOVERY_ROUTE_PROBE`` covers the default
+    route when nothing better is configured.
+    """
+    targets = []
+    if discovery_address:
+        targets.append(discovery_address)
+        network, _, last = discovery_address.rpartition(".")
+        if network and last == "255":
+            targets.append(f"{network}.1")
+    targets.append(_DISCOVERY_ROUTE_PROBE)
+    return targets
+
+
+def _local_interface_addresses(discovery_address=None):
+    """Best-effort set of the IPv4 addresses of this machine.
+
+    An announcement arriving through a LAN broadcast carries the address
+    of the interface it was sent from, which is usually not the address
+    the hostname of the machine resolves to.  The routing table entries
+    leading to the discovery network are therefore collected next to the
+    hostname addresses: without them a second unit of the same machine
+    looks like a remote one and a root never forwards to it.
+    """
+    addresses = {"127.0.0.1"}
+    hostname = socket.gethostname()
+    try:
+        infos = socket.getaddrinfo(hostname, None, socket.AF_INET)
     except OSError:
         logger.warning(
-            "discovery: cannot enumerate local interfaces, assuming only %s",
-            ", ".join(sorted(addresses)),
+            "discovery: cannot resolve the hostname %r, relying on the "
+            "routing table for the local interface addresses",
+            hostname,
         )
-        return addresses
+        infos = []
     for info in infos:
         addresses.add(info[4][0])
+    for target in _route_probe_targets(discovery_address):
+        source = _outbound_source_address(target)
+        if source is None:
+            logger.debug("discovery: no local route to probe %s", target)
+            continue
+        addresses.add(source)
     return addresses
 
 
@@ -637,7 +696,9 @@ class Discovery:
     attempts, then it gives up with an error).  A ``root`` unit listens
     on the shared discovery port and resends every announcement it
     receives to the known units of its own machine (the units whose
-    announcements arrive from a local address); a ``leaf`` only listens
+    announcements arrive from the loopback network or from an address of
+    this machine, taken from the routing table and learned from the unit's
+    own echoed broadcast); a ``leaf`` only listens
     on its own offset port and learns the rest of the network through
     the forwarding root.  The offset ports are what lets several units
     share one machine without fighting over one UDP port.
@@ -681,8 +742,12 @@ class Discovery:
         self._local_addresses = (
             set(local_addresses)
             if local_addresses is not None
-            else _local_interface_addresses()
+            else _local_interface_addresses(self._config.discovery_address)
         )
+        # Addresses of this machine recognized at runtime, when one of the
+        # unit's own announcements comes back through a broadcast; kept
+        # apart from the addresses detected at startup.
+        self._learned_addresses = set()
         self._mode = None
         self._udp_port = None
         self._transport = None
@@ -960,6 +1025,18 @@ class Discovery:
                 addr[0],
                 addr[1],
             )
+            # Our own announcement came back from this address, so it is an
+            # interface of this machine, even when the hostname of the
+            # machine does not resolve to it.
+            if (
+                addr[0] not in self._local_addresses
+                and addr[0] not in self._learned_addresses
+            ):
+                self._learned_addresses.add(addr[0])
+                logger.debug(
+                    "discovery: learned %s as a local interface address",
+                    addr[0],
+                )
             return
         logger.debug(
             "discovery: valid announcement of unit %r from %s:%s "
@@ -976,13 +1053,15 @@ class Discovery:
     def _register_peer(self, unit_id, unit_port, tcp_port, addr):
         """Record one valid announcement and register the peer as remote."""
         address = addr[0]
-        loopback = _is_loopback_address(address)
-        local = loopback or address in self._local_addresses
-        if loopback:
-            reason = "a loopback address"
-        elif local:
-            reason = "one of the local interface addresses"
+        if _is_loopback_address(address):
+            local, reason = True, "a loopback address"
+        elif address in self._local_addresses:
+            local, reason = True, "one of the local interface addresses"
+        elif address in self._learned_addresses:
+            local = True
+            reason = "an address this unit's own announcement came back from"
         else:
+            local = False
             reason = "not one of the local interface addresses"
         logger.debug(
             "discovery: unit %r announced from %s: %s, so it is a %s unit",

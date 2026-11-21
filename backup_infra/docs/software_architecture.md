@@ -99,6 +99,8 @@ After UDP port is bindeded, unit sends broadcast message to the `discovery_addre
 Both `root` and `leaf` units update lists of known remote units if received `trusted_token` is equal to current unit `trusted_token`.
 For syncronization purposes units on the same different from the current one are considered "remote" units.
 
+A unit is considered to be on the same machine when its announcement arrives from an address of this machine. Because an announcement sent to `discovery_address` carries the address of the interface it was sent from, which is not necessarily the address the hostname of the machine resolves to, the machine is mapped from the hostname addresses, from the source address of the routes used to reach the `discovery_address` network (a routing table lookup only, nothing is sent) and from the address the unit's own announcement comes back through the broadcast.
+
 ## Dependencies
 
 ### install.py

@@ -32,14 +32,21 @@ from unit_config import UnitConfig
 # ------------------------------------------------------------------- helpers
 
 
-def make_unit(tmp_path, identifier, port, discovery_port, trusted_token="token"):
+def make_unit(
+    tmp_path,
+    identifier,
+    port,
+    discovery_port,
+    trusted_token="token",
+    discovery_address="127.0.0.1",
+):
     """A unit configured for discovery over the loopback interface."""
     repo_root = tmp_path / identifier
     repo_root.mkdir(parents=True, exist_ok=True)
     config = UnitConfig(
         port=port,
         discovery_port=discovery_port,
-        discovery_address="127.0.0.1",
+        discovery_address=discovery_address,
         identifier=identifier,
         trusted_token=trusted_token,
         sync_delay=3600,
@@ -731,5 +738,96 @@ def test_local_or_remote_verdict_is_logged(tmp_path, caplog):
         ("unit-loopback", True),
         ("unit-remote", False),
     ]
+
+
+# ------------------------------------------------- local interface addresses
+
+
+def test_route_probe_targets_cover_the_discovery_network():
+    """The network of the broadcast is probed; a broadcast address itself
+    cannot be the target of a routing lookup, so its first address is."""
+    probe = unit_module._DISCOVERY_ROUTE_PROBE
+    assert unit_module._route_probe_targets("192.168.1.255") == [
+        "192.168.1.255",
+        "192.168.1.1",
+        probe,
+    ]
+    assert unit_module._route_probe_targets("10.0.0.5") == ["10.0.0.5", probe]
+    assert unit_module._route_probe_targets(None) == [probe]
+    assert unit_module._route_probe_targets("") == [probe]
+
+
+def test_outbound_source_address_reads_the_routing_table():
+    """The address this machine would answer from, without sending a single
+    packet; an address that cannot be routed to gives no address."""
+    assert unit_module._outbound_source_address("127.0.0.5") == "127.0.0.1"
+    assert unit_module._outbound_source_address("") is None
+    assert unit_module._outbound_source_address("256.256.256.256") is None
+
+
+def test_local_interface_addresses_include_the_route_addresses(monkeypatch):
+    """The interface serving the discovery network is one of the local ones,
+    whether or not the hostname of the machine resolves to it."""
+    monkeypatch.setattr(
+        unit_module, "_outbound_source_address", lambda target: "192.168.1.67"
+    )
+    addresses = unit_module._local_interface_addresses("192.168.1.255")
+    assert "127.0.0.1" in addresses
+    assert "192.168.1.67" in addresses
+
+
+def test_local_interface_addresses_survive_unusable_probes(monkeypatch):
+    """A machine with no route to probe is still a machine of its own."""
+    monkeypatch.setattr(
+        unit_module, "_outbound_source_address", lambda target: None
+    )
+    addresses = unit_module._local_interface_addresses("192.168.1.255")
+    assert "127.0.0.1" in addresses
+
+
+def test_the_discovery_network_maps_the_local_addresses(
+    tmp_path, monkeypatch
+):
+    """A Discovery maps the machine through its configured network."""
+    probed = []
+
+    def fake_local_addresses(discovery_address):
+        probed.append(discovery_address)
+        return {"127.0.0.1", "192.168.1.67"}
+
+    monkeypatch.setattr(
+        unit_module, "_local_interface_addresses", fake_local_addresses
+    )
+    unit = make_unit(
+        tmp_path,
+        "unit-a",
+        free_tcp_port(),
+        free_port(),
+        discovery_address="192.168.1.255",
+    )
+    discovery = make_discovery(unit)
+    assert probed == ["192.168.1.255"]
+    assert discovery._local_addresses == {"127.0.0.1", "192.168.1.67"}
+
+
+def test_the_source_of_an_echoed_announcement_becomes_local(tmp_path, caplog):
+    """A second unit of this machine announces from the address of the
+    network interface, the one our own broadcast comes back from too."""
+    discovery = make_offline_discovery(
+        tmp_path, "unit-a", local_addresses={"192.0.2.7"}
+    )
+    own = unit_module.generate_discovery("unit-a", 45000, 18090, "token")
+    peer = unit_module.generate_discovery("unit-b", 45001, 18090, "token")
+    with caplog.at_level(logging.DEBUG, logger="beacon.unit"):
+        discovery.handle_datagram(own.encode("utf-8"), ("192.168.1.67", 45000))
+        discovery.handle_datagram(peer.encode("utf-8"), ("192.168.1.67", 45001))
+    assert "learned 192.168.1.67 as a local interface address" in caplog.text
+    assert (
+        "unit 'unit-b' announced from 192.168.1.67: an address this unit's "
+        "own announcement came back from, so it is a local unit" in caplog.text
+    )
+    # the address learned at runtime is not mixed into the startup addresses
+    assert discovery._local_addresses == {"192.0.2.7"}
+    assert known_entry(discovery, "unit-b")[4] is True
 
 
