@@ -127,8 +127,18 @@ class InstallWizard:
         for index, field in enumerate(MENU_FIELDS, start=1):
             value = self._values.get(field.key)
             self._say(f"  {index:>2}. {field.key:<18} : {self._format_value(field, value)}")
+            if field.kind == "repository" and value:
+                for entry_index, entry in enumerate(value, start=1):
+                    self._say(
+                        self._format_repository_entry(entry_index, entry, "    ")
+                    )
         self._say(f"   s) save config to {self._config_path}")
         self._say("   q) quit")
+
+    @staticmethod
+    def _format_repository_entry(index, entry, indent="  "):
+        """One repository line, e.g. ``  1. photos  ->  /data/photos``."""
+        return f"{indent}{index}. {entry['name']}  ->  {entry['path']}"
 
     @staticmethod
     def _format_value(field, value):
@@ -227,7 +237,7 @@ class InstallWizard:
         if not repos:
             self._say("  (none)")
         for index, entry in enumerate(repos, start=1):
-            self._say(f"  {index}. {entry['name']}  ->  {entry['path']}")
+            self._say(self._format_repository_entry(index, entry))
         self._say("")
         self._say("  a) add entry")
         self._say("  e) edit entry")

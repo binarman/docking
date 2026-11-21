@@ -299,7 +299,59 @@ def test_existing_discovery_values_are_starting_values(tmp_path, monkeypatch):
     assert install.load_config_values(path)["discovery_port"] == 9100
 
 
-# ------------------------------------------------------------ repository menu
+def test_menu_lists_repository_entries(tmp_path):
+    path = tmp_path / "config.yaml"
+    values = {
+        "repository": [
+            {"name": "photos", "path": "/photos1"},
+            {"name": "documents", "path": "/documents"},
+        ]
+    }
+    _, output = run_wizard(path, ["q"], values=values)
+    # the entries are listed right below the repository field line
+    field_line = next(
+        index
+        for index, line in enumerate(output)
+        if f"{field_no('repository'):>2}. repository" in line
+    )
+    assert output[field_line].endswith(": 2 entries")
+    assert output[field_line + 1] == "    1. photos  ->  /photos1"
+    assert output[field_line + 2] == "    2. documents  ->  /documents"
+
+
+def test_menu_lists_no_entries_for_a_single_unset_repository_field(tmp_path):
+    _, output = run_wizard(tmp_path / "config.yaml", ["q"])
+    # nothing configured yet: no entry lines, just the field itself
+    assert "  ->  " not in "\n".join(output)
+    assert "repository         : (not set)" in "\n".join(output)
+
+
+def test_menu_shows_the_current_entries_after_editing(tmp_path):
+    path = tmp_path / "config.yaml"
+    answers = [
+        field_no("repository"),  # repository menu
+        "a", "photos", "/photos1",  # add the first entry
+        "q",  # done with the submenu
+        field_no("repository"), "a", "documents", "/documents", "q",
+        "q",  # quit wizard
+    ]
+    wizard, output = run_wizard(path, answers)
+    # the last menu printed before quitting lists both entries
+    field_line = max(
+        index
+        for index, line in enumerate(output)
+        if f"{field_no('repository'):>2}. repository" in line
+    )
+    assert output[field_line].endswith(": 2 entries")
+    assert output[field_line + 1] == "    1. photos  ->  /photos1"
+    assert output[field_line + 2] == "    2. documents  ->  /documents"
+    assert [entry["name"] for entry in wizard.values["repository"]] == [
+        "photos",
+        "documents",
+    ]
+
+
+# ------------------------------------------------------------- repository menu
 
 
 def test_repository_add_edit_delete(tmp_path):
