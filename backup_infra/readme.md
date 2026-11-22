@@ -19,6 +19,7 @@ This system is designed with the following assumptions in mind:
 - The system runs on a trusted local network, so no encryption is needed (pending, may be reevaluated);
 - All servers are in one local network, so broadcast messages can reach all nodes in backup network.
 - The system should expect file changes from the user, because some data copies are directly accessible to the user;
+- When files are fetched from remote unit, file system metadata is not important and not preserved, i.e. local unit can overwrite owner user, group and access flags;
 - Asking the user to accept changes does not add too much overhead;
 
 ## Terminology
