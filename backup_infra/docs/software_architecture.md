@@ -64,16 +64,16 @@ HTTP/1.1 200 OK
 Content-Type: application/octet-stream
 Content-Length: 8123456
 X-Beacon-File-Hash: 9f2c1e8a5d4b3c2a1f0e9d8c7b6a5948
-X-Beacon-File-Mtime: 1731320000.000000
 X-Beacon-Unit: pc_test1
 Connection: close
 
 <raw file bytes>
 ```
 
-- `X-Beacon-File-Hash` is the hash this unit's manifest records for the file (the md5 hex digest `manifest.py` stores). The receiving unit compares it with the hash it expects *before* reading the body, so a peer that already moved to a newer version costs one round trip and no bytes;
-- `X-Beacon-File-Mtime` is the modification time of the served copy in POSIX seconds. The receiver restores it on the file it writes so that both units keep recording the same manifest timestamp for the same content;
+- `X-Beacon-File-Hash` is the hash this unit's manifest records for the file (the md5 hex digest `manifest.py` stores). The receiving unit compares it with the hash it expects *before* reading the body, so a peer that already moved to a newer version costs one round trip and no bytes. The digest of the received bytes is compared with it as well, which catches a damaged transfer and a peer whose file no longer matches its own manifest;
 - `X-Beacon-Unit` names the serving unit, which is what the requesting unit reports to the user and to its log.
+
+The response carries no file system metadata. Modification time, owner and access flags of a received file belong to the receiving unit, which runs in a different environment (see the assumptions in the readme): they come from the `fetched_file_mode`, `fetched_owner_id` and `fetched_group_id` config fields and from the process umask. The identity of a file in this system is its content hash, never its metadata.
 
 The status codes of a failed request, with a one line `text/plain` body:
 
@@ -97,7 +97,7 @@ The receiving unit:
 1. writes the incoming bytes next to the target file under the `<target name>.beacon-part` name, which the manifest scan never tracks (see `manifest.TEMP_SUFFIX`); a temporary file that already exists means the same path is being downloaded already;
 2. checks that the number of received bytes equals `Content-Length` and that their md5 digest equals the hash expected from the remote manifest;
 3. on any mismatch (including a timeout or a peer that disappears mid-transfer) deletes the temporary file and leaves the target untouched, and reports the reason to the synchronization logic, which retries after refreshing the remote manifest;
-4. after a successful verification restores the modification time and renames the temporary file onto the target. The rename is atomic within a filesystem, so a crash can never leave a partially written file inside a repository; a file that is present in a repository is always a complete version.
+4. after a successful verification it applies the configured access mode and ownership (`fetched_file_mode`, `fetched_owner_id`, `fetched_group_id`) to the temporary file and renames it onto the target. The rename is atomic within a filesystem, so a crash can never leave a partially written file inside a repository, and a file present in a repository is always a complete version. If the mode or the ownership cannot be applied (a missing privilege, for example), the temporary file is deleted and the fetch is reported as failed rather than publishing a file without the configured properties.
 
 ### Discover request
 
@@ -135,8 +135,8 @@ At this stage, `network_messages.py` should implement the following interfaces:
 - `parse_discovery(string) -> tuple(unit identifier, unit UDP port, unit TCP port, trusted token)` decodes the discovery announcement;
 - `canonical_rel_path(string) -> string` validates the `path` of a `file` request and returns it in canonical form (`ValueError` for anything else);
 - `parse_file_target(query: dict) -> tuple(repository name, relative path)` decodes the query string of a `file` request (`ValueError` for a missing, ambiguous or non-canonical field);
-- `generate_file_headers(unit_identifier: string, file_hash: string, mtime: float, size: integer) -> dict(header name, value)` builds the headers of a successful `file` answer (`Content-Length` and the three `X-Beacon-*` headers);
-- `parse_file_headers(dict headers) -> tuple(file hash, mtime, size, unit identifier)` decodes those headers back, accepting any header name casing (`ValueError` for a missing or malformed value).
+- `generate_file_headers(unit_identifier: string, file_hash: string, size: integer) -> dict(header name, value)` builds the headers of a successful `file` answer (`Content-Length`, `X-Beacon-File-Hash` and `X-Beacon-Unit`);
+- `parse_file_headers(dict headers) -> tuple(file hash, size, unit identifier)` decodes those headers back, accepting any header name casing (`ValueError` for a missing or malformed value).
 
 ## desktop_notify.py behavior
 

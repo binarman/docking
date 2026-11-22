@@ -5,6 +5,9 @@ Covers the "Unit configuration" section of the readme:
 - menu navigation and scalar field editing (port, strings, delay, schedule)
 - the optional network discovery fields (``discovery_port``,
   ``discovery_address``): validation, prompts and save round-trip
+- the optional fetched file fields: ``fetched_file_mode`` entered as an
+  octal mode and written back as ``0o644``, ``fetched_owner_id`` and
+  ``fetched_group_id`` entered as numeric ids
 - inline validation before a value is accepted
 - mutual exclusion of ``*_delay`` / ``*_schedule`` pairs
 - the repository submenu (add / edit / delete, unique names)
@@ -16,6 +19,7 @@ Covers the "Unit configuration" section of the readme:
 
 import sys
 
+import pytest
 import yaml
 
 import install
@@ -297,6 +301,177 @@ def test_existing_discovery_values_are_starting_values(tmp_path, monkeypatch):
     assert "discovery_port     : 9100" in joined
     assert "discovery_address  : 192.168.1.255" in joined
     assert install.load_config_values(path)["discovery_port"] == 9100
+
+
+# ---------------------------------------------------- fetched file properties
+
+
+def test_menu_lists_the_fetched_file_fields(tmp_path):
+    _, output = run_wizard(tmp_path / "config.yaml", ["q"])
+    joined = "\n".join(output)
+    for key in ("fetched_file_mode", "fetched_owner_id", "fetched_group_id"):
+        assert f"{field_no(key):>2}. {key}" in joined
+        # all three are optional: they are offered as unset
+        assert f"{key:<18} : (not set)" in joined
+
+
+def test_fetched_file_mode_prompt_shows_the_octal_form(tmp_path):
+    field = install.MENU_FIELDS[field_index("fetched_file_mode")]
+    wizard, _ = run_wizard(
+        tmp_path / "c.yaml", ["q"], values={"fetched_file_mode": 0o640}
+    )
+    assert (
+        wizard._field_prompt(field)
+        == "fetched_file_mode (current: 0o640) "
+        "(octal mode like 0644, empty for the system default): "
+    )
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    (("644", 0o644), ("0644", 0o644), ("0o644", 0o644), ("0", 0), ("7777", 0o7777)),
+)
+def test_fetched_file_mode_accepts_every_octal_spelling(tmp_path, raw, expected):
+    wizard, output = run_wizard(
+        tmp_path / "c.yaml", [field_no("fetched_file_mode"), raw, "q"]
+    )
+    assert wizard.values["fetched_file_mode"] == expected
+    # the wizard confirms the value in the octal form, never as a plain integer
+    assert f"fetched_file_mode = {expected:#o}" in "\n".join(output)
+
+
+def test_fetched_file_mode_validation(tmp_path):
+    wizard, output = run_wizard(
+        tmp_path / "c.yaml",
+        [field_no("fetched_file_mode"), "888", "abc", "17777", "640", "q"],
+    )
+    joined = "\n".join(output)
+    assert "fetched_file_mode must be an octal mode like 0644, got '888'" in joined
+    assert "fetched_file_mode must be an octal mode like 0644, got 'abc'" in joined
+    assert "fetched_file_mode must be in range 0-7777 octal" in joined
+    assert wizard.values["fetched_file_mode"] == 0o640
+
+
+@pytest.mark.parametrize("raw", ("0", "1000", "65534"))
+def test_fetched_ids_accept_plain_numbers(tmp_path, raw):
+    wizard, _ = run_wizard(
+        tmp_path / "c.yaml",
+        [
+            field_no("fetched_owner_id"), raw,
+            field_no("fetched_group_id"), raw,
+            "q",
+        ],
+    )
+    assert wizard.values["fetched_owner_id"] == int(raw)
+    assert wizard.values["fetched_group_id"] == int(raw)
+
+
+def test_fetched_ids_reject_names_and_negative_numbers(tmp_path):
+    wizard, output = run_wizard(
+        tmp_path / "c.yaml",
+        [field_no("fetched_owner_id"), "root", "-1", "1000", "q"],
+    )
+    joined = "\n".join(output)
+    assert "'root' is not a numeric id" in joined
+    assert "'-1' is not a numeric id" in joined
+    assert wizard.values["fetched_owner_id"] == 1000
+
+
+
+def test_fetched_file_fields_are_saved_as_octal(tmp_path):
+    path = tmp_path / "config.yaml"
+    answers = [
+        field_no("fetched_file_mode"), "640",
+        field_no("fetched_owner_id"), "1000",
+        field_no("fetched_group_id"), "100",
+        "s", "q",
+    ]
+    wizard, _ = run_wizard(path, answers, values=valid_values())
+    assert wizard.saved
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert data["fetched_file_mode"] == "0o640"
+    assert data["fetched_owner_id"] == 1000
+    assert data["fetched_group_id"] == 100
+    config = UnitConfig.load(path)
+    assert config.fetched_file_mode == 0o640
+    assert config.fetched_owner_id == 1000
+    assert config.fetched_group_id == 100
+
+
+def test_fetched_file_fields_stay_out_of_the_file_while_unset(tmp_path):
+    path = tmp_path / "config.yaml"
+    wizard, _ = run_wizard(path, ["s", "q"], values=valid_values())
+    assert wizard.saved
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "fetched_file_mode" not in data
+    assert "fetched_owner_id" not in data
+    assert "fetched_group_id" not in data
+
+
+def test_fetched_file_fields_can_be_cleared(tmp_path):
+    path = tmp_path / "config.yaml"
+    values = valid_values()
+    values.update(
+        fetched_file_mode=0o640, fetched_owner_id=1000, fetched_group_id=100
+    )
+    answers = [
+        field_no("fetched_file_mode"), "",
+        field_no("fetched_owner_id"), "",
+        field_no("fetched_group_id"), "",
+        "s", "q",
+    ]
+    wizard, output = run_wizard(path, answers, values=values)
+    assert wizard.saved
+    joined = "\n".join(output)
+    assert "fetched_file_mode cleared." in joined
+    assert "fetched_owner_id cleared." in joined
+    assert "fetched_group_id cleared." in joined
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "fetched_file_mode" not in data
+    config = UnitConfig.load(path)
+    assert config.fetched_file_mode is None
+    assert config.fetched_owner_id is None
+
+
+def test_existing_fetched_values_are_starting_values(tmp_path, monkeypatch):
+    fields = valid_values()
+    fields.update(
+        fetched_file_mode="0o600", fetched_owner_id=0, fetched_group_id=0
+    )
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(fields), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["install.py", "--config", str(path)])
+    output = []
+    assert install.main(input_func=lambda _: "q", output_func=output.append) == 0
+    joined = "\n".join(output)
+    assert "fetched_file_mode  : 0o600" in joined
+    assert "fetched_owner_id   : 0" in joined
+    values = install.load_config_values(path)
+    assert values["fetched_file_mode"] == "0o600"
+    assert values["fetched_owner_id"] == 0
+
+
+def test_fetched_fields_are_part_of_the_full_save_round_trip(tmp_path):
+    path = tmp_path / "config.yaml"
+    answers = [
+        field_no("port"), "8080",
+        field_no("identifier"), "id-1",
+        field_no("trusted_token"), "tok-abc",
+        field_no("sync_delay"), "60",
+        field_no("integrity_delay"), "30",
+        field_no("repository"), "a", "repo-a", "/repos/a", "q",
+        field_no("manifest_storage"), "/units/unit1/manifests",
+        field_no("fetched_file_mode"), "0640",
+        field_no("fetched_owner_id"), "0",
+        field_no("fetched_group_id"), "0",
+        "s", "q",
+    ]
+    wizard, _ = run_wizard(path, answers)
+    assert wizard.saved
+    config = UnitConfig.load(path)
+    assert config.fetched_file_mode == 0o640
+    assert config.fetched_owner_id == 0
+    assert config.fetched_group_id == 0
 
 
 def test_menu_lists_repository_entries(tmp_path):

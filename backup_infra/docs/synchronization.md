@@ -37,6 +37,8 @@ The main idea behind this algorithm is to keep files safe and to delete or updat
 
 "Fetch the file from the remote unit" is a `file` request; its format and the rules of writing the received bytes into the repository are described in the "File request" section of `docs/software_architecture.md`. Fetching is only one of the actions of the table above: the fetched version is recorded with the merged history, so a file and a manifest for it are always stored together.
 
+The file system metadata of a received file is the one the receiving unit assigns, not the one of the sender. The manifest record of a file that was just fetched therefore uses the moment the file was stored locally as its `timestamp`, which keeps "the file is newer than its record" a reliable sign that a manifest no longer describes its repository (the `409` case of a `file` request).
+
 The reason why the `D` token has a unit ID is as follows. Consider the local `D` + remote `A/B` case: the algorithm should not fetch a deleted file if it was deleted somewhere in the past on the remote server. The algorithm needs to check that the remote unit knows about all local deletion events.
 
 ### Checking that one history is a subset of another

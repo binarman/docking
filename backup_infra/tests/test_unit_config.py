@@ -475,3 +475,124 @@ def test_discovery_fields_load_from_yaml(tmp_path):
     assert config.discovery_port == 8091
     assert config.discovery_address == "192.168.1.255"
 
+
+# ------------------------------------------------- fetched file properties
+
+
+def test_fetched_file_fields_default_to_none():
+    config = UnitConfig(**minimal_kwargs())
+    assert config.fetched_file_mode is None
+    assert config.fetched_owner_id is None
+    assert config.fetched_group_id is None
+
+
+def test_fetched_file_fields_are_accessible():
+    config = UnitConfig(
+        **minimal_kwargs(
+            fetched_file_mode=0o640, fetched_owner_id=1000, fetched_group_id=100
+        )
+    )
+    assert config.fetched_file_mode == 0o640
+    assert config.fetched_owner_id == 1000
+    assert config.fetched_group_id == 100
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    (
+        (0o644, 0o644),
+        ("644", 0o644),
+        ("0644", 0o644),
+        ("0o644", 0o644),
+        (" 644 ", 0o644),
+        (0, 0),
+        ("0", 0),
+        ("7777", 0o7777),
+        (0o7777, 0o7777),
+    ),
+)
+def test_fetched_file_mode_accepts_every_octal_spelling(value, expected):
+    config = UnitConfig(**minimal_kwargs(fetched_file_mode=value))
+    assert config.fetched_file_mode == expected
+
+
+@pytest.mark.parametrize("value", ("888", "abc", "", "0o8", "6 4 4", "644k", "-1"))
+def test_fetched_file_mode_must_be_octal(value):
+    with pytest.raises(
+        ValueError, match="fetched_file_mode must be an octal mode like 0644"
+    ):
+        UnitConfig(**minimal_kwargs(fetched_file_mode=value))
+
+
+@pytest.mark.parametrize("value", (1.5, True, [0o644], {"mode": 420}))
+def test_fetched_file_mode_must_be_a_number_or_a_string(value):
+    with pytest.raises(ValueError, match="fetched_file_mode must be a mode"):
+        UnitConfig(**minimal_kwargs(fetched_file_mode=value))
+
+
+@pytest.mark.parametrize("value", (-1, 0o10000, 65536))
+def test_fetched_file_mode_out_of_range(value):
+    with pytest.raises(
+        ValueError, match="fetched_file_mode must be in range 0-7777 octal"
+    ):
+        UnitConfig(**minimal_kwargs(fetched_file_mode=value))
+
+
+@pytest.mark.parametrize("value", (0, 1000, 65534))
+def test_fetched_owner_and_group_accept_any_positive_id(value):
+    config = UnitConfig(
+        **minimal_kwargs(fetched_owner_id=value, fetched_group_id=value)
+    )
+    assert config.fetched_owner_id == value
+    assert config.fetched_group_id == value
+
+
+@pytest.mark.parametrize("value", ("root", "1000", 1000.0, True, [1000]))
+def test_fetched_owner_id_must_be_numeric(value):
+    with pytest.raises(
+        ValueError,
+        match="fetched_owner_id must be a numeric id.*names are not supported",
+    ):
+        UnitConfig(**minimal_kwargs(fetched_owner_id=value))
+
+
+@pytest.mark.parametrize("value", ("backup", 1.5, True))
+def test_fetched_group_id_must_be_numeric(value):
+    with pytest.raises(
+        ValueError,
+        match="fetched_group_id must be a numeric id.*names are not supported",
+    ):
+        UnitConfig(**minimal_kwargs(fetched_group_id=value))
+
+
+@pytest.mark.parametrize("field", ("fetched_owner_id", "fetched_group_id"))
+def test_fetched_ids_must_not_be_negative(field):
+    with pytest.raises(ValueError, match=f"{field} must not be negative"):
+        UnitConfig(**minimal_kwargs(**{field: -1}))
+
+
+def test_fetched_file_fields_load_from_yaml(tmp_path):
+    config = load_config(
+        tmp_path,
+        fetched_file_mode="640",
+        fetched_owner_id=1000,
+        fetched_group_id=100,
+    )
+    assert config.fetched_file_mode == 0o640
+    assert config.fetched_owner_id == 1000
+    assert config.fetched_group_id == 100
+
+
+def test_leading_zero_mode_loads_from_yaml_as_octal(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                **valid_fields(),
+                "fetched_file_mode": "0644",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert UnitConfig.load(path).fetched_file_mode == 0o644
+

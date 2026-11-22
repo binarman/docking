@@ -13,6 +13,13 @@ network discovery disabled (the unit then only serves its own status
 endpoints), and leaving ``discovery_address`` empty makes the unit
 announce to the limited broadcast address (255.255.255.255).
 
+The optional ``fetched_file_mode``, ``fetched_owner_id`` and
+``fetched_group_id`` fields describe how the files this unit fetches from
+other units look on its own file system; leaving them empty keeps the
+defaults the operating system assigns to a new file.  An access mode is
+entered as octal digits (``644`` or ``0644``) and written to the config file
+in the ``0o644`` form.
+
 Every answer is validated before it is accepted, and the config is
 checked with ``UnitConfig`` again before writing, so the produced file
 always loads back as a valid unit config.  If the target file already
@@ -29,7 +36,7 @@ from pathlib import Path
 
 import yaml
 
-from unit_config import UnitConfig, validate_schedule
+from unit_config import UnitConfig, validate_mode, validate_schedule
 
 
 @dataclass(frozen=True)
@@ -37,7 +44,7 @@ class Field:
     """One entry of the wizard menu, mirroring a unit config field."""
 
     key: str  # config key / UnitConfig argument name
-    kind: str  # "port" | "required_string" | "optional_string" | "delay" | "schedule" | "repository"
+    kind: str  # "port" | "required_string" | "optional_string" | "delay" | "schedule" | "mode" | "numeric_id" | "repository"
 
 
 MENU_FIELDS = (
@@ -53,6 +60,9 @@ MENU_FIELDS = (
     Field("integrity_schedule", "schedule"),
     Field("repository", "repository"),
     Field("manifest_storage", "required_string"),
+    Field("fetched_file_mode", "mode"),
+    Field("fetched_owner_id", "numeric_id"),
+    Field("fetched_group_id", "numeric_id"),
 )
 
 # Fields that are mutually exclusive with the field under that key.
@@ -70,12 +80,17 @@ _PROMPT_HINTS = {
     "optional_string": " (empty to clear)",
     "delay": " (seconds, empty to clear)",
     "schedule": " (minute hour day month weekday, empty to clear)",
+    "mode": " (octal access mode, empty to clear)",
+    "numeric_id": " (numeric id, empty to clear)",
 }
 
 # Hints that replace the hint of the field kind for a single field.
 _PROMPT_HINTS_BY_KEY = {
     "discovery_port": " (1-65535, empty to disable network discovery)",
     "discovery_address": " (broadcast address, empty for 255.255.255.255)",
+    "fetched_file_mode": " (octal mode like 0644, empty for the system default)",
+    "fetched_owner_id": " (numeric user id, empty to keep the current user)",
+    "fetched_group_id": " (numeric group id, empty to keep the current group)",
 }
 
 
@@ -151,6 +166,10 @@ class InstallWizard:
             return f"{value} s"
         if field.kind == "schedule":
             return f'"{value}"'
+        if field.kind == "mode":
+            # shown in the octal form of the config file, whichever accepted
+            # spelling the value was entered or loaded as
+            return f"{validate_mode(field.key, value):#o}"
         return str(value)
 
     def _edit_scalar(self, field):
@@ -193,6 +212,19 @@ class InstallWizard:
                 self._fail(f"delay must be a positive integer, got {value}")
                 return None
             return value
+        if kind == "mode":
+            # the config validator understands every octal spelling, so the
+            # wizard reuses it instead of repeating the rules
+            try:
+                return validate_mode(field.key, raw)
+            except ValueError as error:
+                self._fail(str(error))
+                return None
+        if kind == "numeric_id":
+            if not raw.isdigit():
+                self._fail(f"{raw!r} is not a numeric id")
+                return None
+            return int(raw)
         if kind == "schedule":
             try:
                 validate_schedule(raw)
@@ -368,6 +400,10 @@ def config_to_yaml_dict(config):
             data[field.key] = [
                 {"name": repo.name, "path": repo.path} for repo in value
             ]
+        elif field.kind == "mode":
+            # the octal spelling says more to a reader than the integer it is
+            # stored as, and the config validator reads it back unchanged
+            data[field.key] = f"{value:#o}"
         else:
             data[field.key] = value
     return data

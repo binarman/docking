@@ -152,6 +152,11 @@ The config file contains the following fields:
   - **name**: Formal name of the repository, used to sync between units.
   - **path**: Local path in the filesystem to the root of this repository.
 - **manifest_storage**: Local path to the directory where manifest files are stored.
+- **fetched_file_mode**: Optional access mode of the files this unit writes when it fetches them from another unit, written as an octal mode (`0644` or `"644"`). It does not apply to the unit's own files or to manifests. If not set, a fetched file gets the mode the operating system assigns to new files.
+- **fetched_owner_id**: Optional numeric user id that owns the files this unit fetches from other units. Changing ownership requires root privileges, which is how a unit runs inside its container. If not set, a fetched file stays owned by the user running the unit.
+- **fetched_group_id**: Optional numeric group id of the files this unit fetches from other units, with the same rules as `fetched_owner_id`.
+
+File system metadata of a fetched file belongs to the receiving unit, so these three fields, together with the process umask, decide how a received file looks locally; nothing about ownership or access flags travels between units.
 
 "sync_delay" and "sync_schedule" are mutually exclusive fields, but at least one of them should be defined.
 The same applies to the "integrity_delay" and "integrity_schedule" pair.

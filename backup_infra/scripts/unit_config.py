@@ -29,6 +29,12 @@ on invalid input:
 - ``repository``         : non-empty list of ``{name, path}`` entries with
   unique names.
 - ``manifest_storage``   : local directory where manifest files are stored.
+- ``fetched_file_mode``  : optional access mode of the files this unit writes
+  when it fetches them from another unit (a number or a string of octal
+  digits, ``0``-``7777`` octal).
+- ``fetched_owner_id``   : optional numeric user id that owns the fetched
+  files.
+- ``fetched_group_id``   : optional numeric group id of the fetched files.
 
 ``sync_delay`` and ``sync_schedule`` are mutually exclusive, but at least one
 of them must be defined; the same applies to the ``integrity_delay`` /
@@ -54,6 +60,9 @@ _CRON_FIELDS = (
 
 _INT_RE = re.compile(r"-?\d+")
 
+#: A file access mode written as octal digits, e.g. ``"0644"``.
+_OCTAL_RE = re.compile(r"[0-7]+")
+
 #: Known top-level config fields (see the readme "Config file" section).
 _CONFIG_FIELDS = (
     "port",
@@ -68,6 +77,9 @@ _CONFIG_FIELDS = (
     "integrity_schedule",
     "repository",
     "manifest_storage",
+    "fetched_file_mode",
+    "fetched_owner_id",
+    "fetched_group_id",
 )
 
 #: Delay/schedule pairs that are mutually exclusive but jointly required.
@@ -168,6 +180,52 @@ def _validate_delay(field, value):
     return value
 
 
+def validate_mode(field, value):
+    """Optional file access mode, given as a number or as octal digits.
+
+    ``0o644``, ``0644`` and ``"644"`` all describe the same mode: YAML turns
+    a number with a leading zero into octal, so a string of digits is read as
+    octal too instead of being silently taken as decimal.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        digits = value.strip()
+        if digits[:2].lower() == "0o":
+            digits = digits[2:]
+        if not digits or _OCTAL_RE.fullmatch(digits) is None:
+            raise ValueError(
+                f"{field} must be an octal mode like 0644, got {value!r}"
+            )
+        mode = int(digits, 8)
+    elif isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be a mode, got {_type_name(value)}")
+    else:
+        mode = value
+    if not 0 <= mode <= 0o7777:
+        raise ValueError(f"{field} must be in range 0-7777 octal, got {mode}")
+    return mode
+
+
+def validate_numeric_id(field, value):
+    """Optional numeric user or group id.
+
+    Only ids are accepted: the user and group databases inside the container
+    are not the ones of the host, so the same name in two config files could
+    mean two different accounts.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"{field} must be a numeric id, got {_type_name(value)}; "
+            "user and group names are not supported"
+        )
+    if value < 0:
+        raise ValueError(f"{field} must not be negative, got {value}")
+    return value
+
+
 def _validate_schedule_field(field, value):
     if value is None:
         return None
@@ -257,6 +315,9 @@ class UnitConfig:
         integrity_schedule=None,
         repository=None,
         manifest_storage=None,
+        fetched_file_mode=None,
+        fetched_owner_id=None,
+        fetched_group_id=None,
     ):
         self._port = _validate_port(port)
         self._discovery_port = _validate_optional_port(
@@ -281,6 +342,15 @@ class UnitConfig:
         self._repositories = _validate_repositories(repository)
         self._manifest_storage = _validate_required_string(
             "manifest_storage", manifest_storage
+        )
+        self._fetched_file_mode = validate_mode(
+            "fetched_file_mode", fetched_file_mode
+        )
+        self._fetched_owner_id = validate_numeric_id(
+            "fetched_owner_id", fetched_owner_id
+        )
+        self._fetched_group_id = validate_numeric_id(
+            "fetched_group_id", fetched_group_id
         )
 
         for delay_field, schedule_field in _DELAY_SCHEDULE_PAIRS:
@@ -354,6 +424,22 @@ class UnitConfig:
         """Local directory where manifest files are stored."""
         return self._manifest_storage
 
+    @property
+    def fetched_file_mode(self):
+        """Access mode of the files written while fetching from another unit
+        (``None`` if not set: the mode the operating system assigns)."""
+        return self._fetched_file_mode
+
+    @property
+    def fetched_owner_id(self):
+        """Numeric user id that owns fetched files (``None`` if not set)."""
+        return self._fetched_owner_id
+
+    @property
+    def fetched_group_id(self):
+        """Numeric group id of fetched files (``None`` if not set)."""
+        return self._fetched_group_id
+
     # ---------------------------------------------------------- construction
 
     @classmethod
@@ -387,7 +473,8 @@ class UnitConfig:
             "address=%r, identifier=%r, "
             "trusted_token=<set>, sync_delay=%r, sync_schedule=%r, "
             "integrity_delay=%r, integrity_schedule=%r, repository=[%s], "
-            "manifest_storage=%r)"
+            "manifest_storage=%r, fetched_file_mode=%r, fetched_owner_id=%r, "
+            "fetched_group_id=%r)"
             % (
                 self._port,
                 self._discovery_port,
@@ -400,6 +487,9 @@ class UnitConfig:
                 self._integrity_schedule,
                 repos,
                 self._manifest_storage,
+                self._fetched_file_mode,
+                self._fetched_owner_id,
+                self._fetched_group_id,
             )
         )
 
