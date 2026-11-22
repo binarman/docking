@@ -20,6 +20,11 @@ defaults the operating system assigns to a new file.  An access mode is
 entered as octal digits (``644`` or ``0644``) and written to the config file
 in the ``0o644`` form.
 
+The optional ``max_transfer_size``, ``transfer_timeout`` and
+``max_parallel_transfers`` fields are positive whole numbers that bound the
+``file`` transfers between units; leaving them empty applies the default the
+unit uses (no size limit, a 300 s idle timeout and two transfers at a time).
+
 Every answer is validated before it is accepted, and the config is
 checked with ``UnitConfig`` again before writing, so the produced file
 always loads back as a valid unit config.  If the target file already
@@ -36,7 +41,13 @@ from pathlib import Path
 
 import yaml
 
-from unit_config import UnitConfig, validate_mode, validate_schedule
+from unit_config import (
+    DEFAULT_MAX_PARALLEL_TRANSFERS,
+    DEFAULT_TRANSFER_TIMEOUT,
+    UnitConfig,
+    validate_mode,
+    validate_schedule,
+)
 
 
 @dataclass(frozen=True)
@@ -44,7 +55,7 @@ class Field:
     """One entry of the wizard menu, mirroring a unit config field."""
 
     key: str  # config key / UnitConfig argument name
-    kind: str  # "port" | "required_string" | "optional_string" | "delay" | "schedule" | "mode" | "numeric_id" | "repository"
+    kind: str  # "port" | "required_string" | "optional_string" | "delay" | "schedule" | "mode" | "numeric_id" | "positive_int" | "repository"
 
 
 MENU_FIELDS = (
@@ -63,6 +74,9 @@ MENU_FIELDS = (
     Field("fetched_file_mode", "mode"),
     Field("fetched_owner_id", "numeric_id"),
     Field("fetched_group_id", "numeric_id"),
+    Field("max_transfer_size", "positive_int"),
+    Field("transfer_timeout", "positive_int"),
+    Field("max_parallel_transfers", "positive_int"),
 )
 
 # Fields that are mutually exclusive with the field under that key.
@@ -82,6 +96,7 @@ _PROMPT_HINTS = {
     "schedule": " (minute hour day month weekday, empty to clear)",
     "mode": " (octal access mode, empty to clear)",
     "numeric_id": " (numeric id, empty to clear)",
+    "positive_int": " (positive integer, empty for the unit's default)",
 }
 
 # Hints that replace the hint of the field kind for a single field.
@@ -91,6 +106,11 @@ _PROMPT_HINTS_BY_KEY = {
     "fetched_file_mode": " (octal mode like 0644, empty for the system default)",
     "fetched_owner_id": " (numeric user id, empty to keep the current user)",
     "fetched_group_id": " (numeric group id, empty to keep the current group)",
+    "max_transfer_size": " (bytes, empty for no size limit)",
+    "transfer_timeout": f" (seconds, empty for {DEFAULT_TRANSFER_TIMEOUT})",
+    "max_parallel_transfers": (
+        f" (transfers, empty for {DEFAULT_MAX_PARALLEL_TRANSFERS})"
+    ),
 }
 
 
@@ -225,6 +245,15 @@ class InstallWizard:
                 self._fail(f"{raw!r} is not a numeric id")
                 return None
             return int(raw)
+        if kind == "positive_int":
+            if not raw.isdigit():
+                self._fail(f"{raw!r} is not a positive integer")
+                return None
+            value = int(raw)
+            if value <= 0:
+                self._fail(f"{field.key} must be a positive integer, got {value}")
+                return None
+            return value
         if kind == "schedule":
             try:
                 validate_schedule(raw)

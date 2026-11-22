@@ -503,7 +503,12 @@ def test_sync_reports_known_peers(tmp_path, caplog):
         assert [name for name, _, _ in unit.remotes] == ["unit-b"]
         with caplog.at_level(logging.INFO, logger="beacon.unit"):
             await unit.sync()
-        assert "1 peer(s) known (unit-b)" in caplog.text
+        # The round reports the peers it takes as its source and how each of
+        # them went: unit-b was only ever registered, never announced, so it
+        # has no address to fetch from.
+        assert "1 peer(s) (unit-b)" in caplog.text
+        assert "unit 'unit-b' has no known address" in caplog.text
+        assert "0 file(s) fetched" in caplog.text
 
     asyncio.run(scenario())
 

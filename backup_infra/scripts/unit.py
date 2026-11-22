@@ -3,9 +3,9 @@
 
 ``unit.py`` is the core utility of the backup network (see the "Core
 tools" section of the project readme).  The unit tracks its
-repositories, answers status requests and announces itself on the
-network with the UDP discovery protocol (cross-unit file
-synchronization is added later; see ``docs/synchronization.md``).
+repositories, synchronizes them with the other units of the network and
+answers status requests (see the "Manifest and file synchronization
+protocol" section of ``docs/software_architecture.md``).
 
 On start up the script:
 
@@ -23,8 +23,11 @@ On start up the script:
    is skipped when the config does not set ``discovery_port``;
 4. starts an HTTP server on the configured address and port that answers
    (message formats are defined by ``network_messages``):
-   - ``GET /status`` -- JSON short status plus base64-encoded manifests
-     (unit x unit);
+   - ``GET /status`` -- JSON short status plus base64-encoded manifests, one
+     per repository (unit x unit); the manifests are what a peer synchronizes
+     from, so there is no separate manifest endpoint;
+   - ``GET /file`` -- the raw content of one tracked file, the only request
+     authenticated with the shared ``trusted_token`` (unit x unit);
    - ``GET /network`` -- JSON list of all units in the network (this unit
      plus any known units; unit x desktop_notify);
    - ``GET /summary`` -- the user facing HTML status page; ``GET /``
@@ -32,7 +35,7 @@ On start up the script:
    - ``POST /reevaluate`` -- re-evaluates the integrity issues of one
      repository (``repository=NAME`` given as a query parameter or a form
      field) and clears the faults that are no longer reproducible;
-5. spawns two async tasks that run once immediately and then on the
+5. spawns three async tasks that run once immediately and then on the
    configured schedule:
    - the integrity check re-scans every repository through
      ``Manifest.update_from_directory`` (new files, changed hashes,
@@ -40,8 +43,11 @@ On start up the script:
      change all update the manifest and its issue list), saves it under
      ``<manifest_storage>/<repository name>.manifest`` and logs the
      result;
-   - the synchronization is a no-op: cross-unit synchronization is not
-     implemented yet, discovered peers are only reported;
+   - the synchronization asks every discovered unit for its status and for
+     the manifests of the shared repositories, merges each manifest into
+     the local one and fetches or removes the files the merged history
+     calls for; a round that lands while the unit is busy is skipped and
+     retried a minute later;
 6. runs until it receives SIGINT or SIGTERM, then shuts down cleanly.
 
 Usage:
@@ -53,6 +59,7 @@ or ``error``; ``-v``/``--verbose`` is a shortcut for ``debug``.
 
 import argparse
 import asyncio
+import hashlib
 import logging
 import os
 import signal
@@ -62,22 +69,40 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import yaml
 
-from manifest import Manifest, current_hash, hash_file, make_hash_entry
+from manifest import (
+    TEMP_SUFFIX,
+    Manifest,
+    current_hash,
+    hash_file,
+    is_deleted,
+    make_hash_entry,
+)
 from network_messages import (
+    FILE_TOKEN_HEADER,
+    STATUS_FAULTY,
     STATUS_OK,
     compute_status,
     generate_discovery,
+    generate_file_headers,
     generate_network_status,
     generate_status,
     generate_summary,
     manifest_status,
     parse_discovery,
+    parse_file_headers,
+    parse_file_target,
+    parse_status,
 )
-from unit_config import UnitConfig, validate_schedule
+from unit_config import (
+    DEFAULT_MAX_PARALLEL_TRANSFERS,
+    DEFAULT_TRANSFER_TIMEOUT,
+    UnitConfig,
+    validate_schedule,
+)
 
 logger = logging.getLogger("beacon.unit")
 
@@ -93,11 +118,57 @@ _STATUS_TEXTS = {
     200: "OK",
     303: "See Other",
     400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
     404: "Not Found",
     405: "Method Not Allowed",
+    409: "Conflict",
+    410: "Gone",
     413: "Payload Too Large",
+    415: "Unsupported Media Type",
     500: "Internal Server Error",
 }
+
+#: Query string names of the unit-to-unit requests.
+_UNIT_QUERY = "unit"
+_REPOSITORY_QUERY = "repository"
+_PATH_QUERY = "path"
+
+#: Seconds a synchronization round waits before it is tried again when it
+#: landed while the unit was busy with another round or with an integrity
+#: check (see the "Synchronization order" section of
+#: ``docs/software_architecture.md``).
+_BUSY_RETRY_DELAY = 60
+
+#: Size of the chunks a ``file`` body is read or written in; the body is
+#: streamed and never buffered, so a large file costs one chunk of memory.
+_CHUNK_SIZE = 1024 * 1024
+
+
+class TransferError(Exception):
+    """A file transfer with a peer unit failed.
+
+    Raised for a peer that cannot be reached or that refuses the request, for
+    an answer that cannot be trusted (malformed or contradictory headers, a
+    truncated body, content that does not match the expected hash) and for a
+    failure to place the received file in the repository.  A synchronization
+    round reports it, discards the merge that asked for the transfer and
+    tries again on the next round with a fresh remote manifest.
+    """
+
+
+def _is_inside(root, path):
+    """Whether ``path`` stays inside the ``root`` directory.
+
+    Both sides are normalized to absolute paths without resolving symlinks,
+    so a peer supplied relative path can never walk out of a repository with
+    ``..`` segments (those are rejected earlier by
+    ``network_messages.canonical_rel_path``) and a repository root configured
+    with a trailing separator still contains its files.
+    """
+    root = os.path.abspath(str(root))
+    full = os.path.abspath(str(path))
+    return full == root or full.startswith(root.rstrip(os.sep) + os.sep)
 
 #: Maximum number of ports a ``leaf`` unit scans above ``discovery_port``
 #: looking for a free UDP discovery port; the unit exits with an error
@@ -189,17 +260,37 @@ def next_cron_match(schedule, after):
 # ------------------------------------------------------------- task looping
 
 
-async def schedule_loop(action, delay=None, schedule=None):
+async def schedule_loop(action, delay=None, schedule=None, busy_check=None):
     """Run ``action`` once, then repeat according to the schedule.
 
     ``action`` is an async callable.  Exactly one of ``delay`` (seconds
     between runs) or ``schedule`` (5-field cron string) must be given;
-    ``UnitConfig`` guarantees this for the unit's tasks.
+    ``UnitConfig`` guarantees this for the unit's tasks.  A task that raises
+    is logged and kept running: one failed round must not stop the unit from
+    ever checking or synchronizing again.
+
+    ``busy_check`` is an optional callable.  When it reports the unit busy at
+    the moment a run is due, the run is skipped and retried
+    ``_BUSY_RETRY_DELAY`` seconds later, so a scheduled round never stacks up
+    behind a round that is still running (see the "Synchronization order"
+    section of ``docs/software_architecture.md``).
     """
     if (delay is None) == (schedule is None):
         raise ValueError("exactly one of delay or schedule must be set")
     while True:
-        await action()
+        if busy_check is not None and busy_check():
+            logger.info(
+                "scheduled task: skipped, the unit is busy; retrying in %d s",
+                _BUSY_RETRY_DELAY,
+            )
+            await asyncio.sleep(_BUSY_RETRY_DELAY)
+            continue
+        try:
+            await action()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("scheduled task failed; it will run again")
         if delay is not None:
             await asyncio.sleep(delay)
         else:
@@ -219,6 +310,13 @@ class Unit:
     by network discovery, see :class:`Discovery`).  All mutations happen
     under ``Unit.lock`` so the HTTP handlers always see a consistent
     snapshot.
+
+    Cross-unit transfers are bounded by ``max_parallel_transfers``:
+    ``serving_slots`` limits how many ``file`` requests this unit answers at
+    the same time, ``fetching_slots`` how many it runs towards peers.  The
+    ``_sync_in_progress``/``_check_in_progress`` flags mark the unit busy so
+    a scheduled synchronization is skipped instead of overlapping a round or
+    an integrity check that is still running.
     """
 
     def __init__(self, config):
@@ -228,6 +326,43 @@ class Unit:
         # name -> {"status": short status, "last_sync": datetime | None}
         self._remotes = {}
         self._lock = asyncio.Lock()
+        self._discovery = None
+        self._sync_in_progress = False
+        self._check_in_progress = False
+        # A config that leaves the transfer limits out gets the documented
+        # default; resolving that once here keeps every use of them simple.
+        self._transfer_timeout = (
+            DEFAULT_TRANSFER_TIMEOUT
+            if config.transfer_timeout is None
+            else config.transfer_timeout
+        )
+        self._max_parallel_transfers = (
+            DEFAULT_MAX_PARALLEL_TRANSFERS
+            if config.max_parallel_transfers is None
+            else config.max_parallel_transfers
+        )
+        self._serving_slots = asyncio.Semaphore(self._max_parallel_transfers)
+        self._fetching_slots = asyncio.Semaphore(self._max_parallel_transfers)
+
+    @property
+    def transfer_timeout(self):
+        """Seconds a peer may stay silent before a transfer is given up."""
+        return self._transfer_timeout
+
+    @property
+    def max_parallel_transfers(self):
+        """Number of ``file`` transfers this unit runs at the same time."""
+        return self._max_parallel_transfers
+
+    @property
+    def serving_slots(self):
+        """Semaphore bounding the ``file`` transfers served at once."""
+        return self._serving_slots
+
+    @property
+    def fetching_slots(self):
+        """Semaphore bounding the ``file`` transfers run towards peers."""
+        return self._fetching_slots
 
     # ---------------------------------------------------------- properties
 
@@ -292,10 +427,11 @@ class Unit:
     def register_remote(self, name):
         """Register a unit discovered through network discovery.
 
-        Until cross-unit synchronization is implemented a freshly
-        discovered unit carries the ``OK`` status and no synchronization
-        time; the synchronization task will replace both with the real
-        values.  Returns ``True`` when the unit was not known before.
+        A freshly discovered unit carries the ``OK`` status and no
+        synchronization time; the next synchronization round replaces both
+        with what the peer's ``status`` answer reports
+        (:meth:`Unit._report_remote`).  Returns ``True`` when the unit was
+        not known before.
         """
         if name in self._remotes:
             return False
@@ -357,37 +493,44 @@ class Unit:
         the unit lock is held, so concurrent HTTP handlers never observe a
         half-updated manifest.  A repository whose directory is missing is
         skipped with an error; a scan failure is logged and the remaining
-        repositories are still checked.
+        repositories are still checked.  While the scan runs the unit is
+        busy: a synchronization round scheduled for that moment is skipped.
         """
-        async with self._lock:
-            for name in self.known_repositories():
-                try:
-                    status = await asyncio.to_thread(
-                        self._check_repository, name
-                    )
-                except Exception:
-                    logger.exception(
-                        "integrity check failed for repository %r", name
-                    )
-                    continue
-                if status is None:
-                    continue
-                logger.info(
-                    "integrity: repository %r: %d file(s) (%d active, "
-                    "%d deleted), status: %s",
-                    name,
-                    status["total_files"],
-                    status["active_files"],
-                    status["deleted_files"],
-                    manifest_status(self._manifests[name]),
+        self._check_in_progress = True
+        try:
+            async with self._lock:
+                await asyncio.to_thread(self._run_integrity_check)
+        finally:
+            self._check_in_progress = False
+
+    def _run_integrity_check(self):
+        """Scan and refresh every repository (the body of the check task)."""
+        for name in self.known_repositories():
+            try:
+                status = self._check_repository(name)
+            except Exception:
+                logger.exception(
+                    "integrity check failed for repository %r", name
                 )
-                for issue in status["issues"]:
-                    logger.warning(
-                        "  %s [%s]: %s",
-                        issue["type"],
-                        issue["path"],
-                        issue["description"],
-                    )
+                continue
+            if status is None:
+                continue
+            logger.info(
+                "integrity: repository %r: %d file(s) (%d active, "
+                "%d deleted), status: %s",
+                name,
+                status["total_files"],
+                status["active_files"],
+                status["deleted_files"],
+                manifest_status(self._manifests[name]),
+            )
+            for issue in status["issues"]:
+                logger.warning(
+                    "  %s [%s]: %s",
+                    issue["type"],
+                    issue["path"],
+                    issue["description"],
+                )
 
     def _check_repository(self, name):
         """Scan one repository, refresh and save its manifest.
@@ -481,35 +624,539 @@ class Unit:
         metadata["timestamp"] = new_timestamp
         return True
 
-    # ---------------------------------------------------------- sync (stub)
+    # -------------------------------------------------------- synchronization
 
-    async def sync(self):
-        """Synchronize the repositories with peer units.
+    @property
+    def is_busy(self):
+        """True while a synchronization round or an integrity check runs."""
+        return self._sync_in_progress or self._check_in_progress
 
-        Cross-unit synchronization is not implemented yet: peers found
-        by network discovery are reported but no data is transferred.
-        The hook keeps the synchronization schedule alive for the
-        future multi-unit implementation.
+    def set_discovery(self, discovery):
+        """Attach the :class:`Discovery` instance that knows peer addresses."""
+        self._discovery = discovery
+
+    def peer_target(self, unit_id):
+        """``(address, tcp_port)`` of a peer, or ``None`` when it is unknown."""
+        if self._discovery is None:
+            return None
+        return self._discovery.peer_target(unit_id)
+
+    def _report_remote(self, unit_id, status):
+        """Record what a synchronization round learned about a peer unit."""
+        info = self._remotes.setdefault(
+            unit_id, {"status": STATUS_OK, "last_sync": None}
+        )
+        info["status"] = status
+        info["last_sync"] = datetime.now()
+
+    async def sync(self, reason="scheduled"):
+        """Synchronize the repositories with the peer units once.
+
+        One round asks every known unit for its ``status`` answer (its short
+        status plus the manifests of the repositories it tracks), merges each
+        shared repository into the local manifest and carries out the
+        transfers the merged history calls for.  A peer or a repository that
+        reports issues is read but never used to change local data (see the
+        "Algorithm" section of ``docs/synchronization.md``).
+
+        Returns a summary dict of the round, or ``None`` when the round was
+        skipped because the unit is busy; the scheduler retries it shortly.
         """
-        async with self._lock:
-            repositories = self.known_repositories()
-            peers = sorted(self._remotes)
-        if peers:
+        if self._sync_in_progress:
             logger.info(
-                "synchronization: %d peer(s) known (%s); cross-unit "
-                "synchronization is not implemented yet, %d "
-                "repository(ies) unchanged",
-                len(peers),
-                ", ".join(peers),
-                len(repositories),
+                "synchronization (%s): skipped, a round is already running",
+                reason,
             )
-        else:
+            return None
+        if self._check_in_progress:
             logger.info(
-                "synchronization: no known peers; %d repository(ies) "
-                "unchanged",
-                len(repositories),
+                "synchronization (%s): skipped, an integrity check is running",
+                reason,
             )
+            return None
+        self._sync_in_progress = True
+        try:
+            return await self._sync_round(reason)
+        finally:
+            self._sync_in_progress = False
 
+    async def _sync_round(self, reason):
+        """Synchronize with every known peer; returns the round summary."""
+        repositories = self.known_repositories()
+        peers = sorted(
+            name for name in self._remotes if name != self.identifier
+        )
+        summary = {
+            "reason": reason,
+            "peers": len(peers),
+            "fetches": 0,
+            "deletions": 0,
+            "failures": 0,
+        }
+        if not peers:
+            logger.info(
+                "synchronization (%s): no known peers; %d repository(ies) "
+                "unchanged",
+                reason,
+                len(repositories),
+            )
+            return summary
+        logger.info(
+            "synchronization (%s): %d peer(s) (%s), %d repository(ies)",
+            reason,
+            len(peers),
+            ", ".join(peers),
+            len(repositories),
+        )
+        for unit_id in peers:
+            stats = await self._sync_with_peer(unit_id, repositories)
+            for key in ("fetches", "deletions", "failures"):
+                summary[key] += stats[key]
+        logger.info(
+            "synchronization (%s) done: %d file(s) fetched, %d removed, "
+            "%d failure(s)",
+            reason,
+            summary["fetches"],
+            summary["deletions"],
+            summary["failures"],
+        )
+        return summary
+
+    async def _sync_with_peer(self, unit_id, repositories):
+        """Synchronize every shared repository with one peer unit."""
+        stats = {"fetches": 0, "deletions": 0, "failures": 0}
+        try:
+            status, remote_manifests = await self._request_status(unit_id)
+        except TransferError as error:
+            logger.warning("synchronization: %s", error)
+            return stats
+        self._report_remote(unit_id, status)
+        remote_by_name = {manifest.name: manifest for manifest in remote_manifests}
+        for name in repositories:
+            remote = remote_by_name.get(name)
+            if remote is None:
+                continue  # this peer does not track the repository
+            reason = self._sync_blocker(name, remote)
+            if reason is not None:
+                logger.info(
+                    "synchronization: repository %r is not synchronized "
+                    "with unit %r: %s",
+                    name,
+                    unit_id,
+                    reason,
+                )
+                continue
+            repo_stats = await self._sync_repository(unit_id, name, remote)
+            for key in stats:
+                stats[key] += repo_stats[key]
+        return stats
+
+    def _sync_blocker(self, name, remote):
+        """Why repository ``name`` must not be merged with ``remote``.
+
+        Returns ``None`` when the merge may go ahead.  A repository with
+        issues on either side is left alone: its data may be damaged or
+        incomplete, and a merge could turn a hardware problem into a lost
+        file (see the "Algorithm" section of ``docs/synchronization.md``).
+        A peer that answers with the manifest of a faulty repository is
+        treated the same way: its issues are visible in the answer.
+        """
+        try:
+            local = self.manifest(name)
+        except KeyError:
+            return "this unit does not track it"
+        remote_status = manifest_status(remote)
+        if remote_status != STATUS_OK:
+            return f"unit {remote.unit_id!r} reports it as {remote_status}"
+        local_status = manifest_status(local)
+        if local_status != STATUS_OK:
+            return f"it is {local_status} on this unit"
+        return None
+
+    async def _sync_repository(self, unit_id, name, remote):
+        """Merge one remote manifest into the local one and apply the result.
+
+        The merge itself is fast and runs under the unit lock; the transfers
+        it asks for run outside of the lock so that a slow download does not
+        hold up the HTTP handlers.  A transfer that fails aborts the
+        repository: the merged manifest is discarded and reloaded from disk,
+        so the next round recomputes its actions from a record that matches
+        the files on disk instead of keeping a history that promises bytes
+        which never arrived.
+        """
+        stats = {"fetches": 0, "deletions": 0, "failures": 0}
+        async with self._lock:
+            manifest = self.manifest(name)
+            manifest.clean_remote_issues(unit_id)
+            actions = manifest.merge(remote, remote_id=unit_id)
+            # the hash each fetch must reproduce, read from the merged history
+            expected = {
+                action["path"]: current_hash(manifest.files[action["path"]])
+                for action in actions
+                if action["action"] == "fetch"
+            }
+            if not actions:
+                manifest.save(self.manifest_path(name))
+                return stats
+        failed = None
+        for action in actions:
+            rel_path = action["path"]
+            try:
+                if action["action"] == "fetch":
+                    await self._fetch_file(
+                        unit_id, name, rel_path, expected[rel_path]
+                    )
+                    stats["fetches"] += 1
+                else:
+                    self._remove_local_file(name, rel_path)
+                    stats["deletions"] += 1
+            except TransferError as error:
+                stats["failures"] += 1
+                failed = error
+                logger.warning(
+                    "synchronization: cannot %s %r of repository %r "
+                    "(unit %r): %s",
+                    action["action"],
+                    rel_path,
+                    name,
+                    unit_id,
+                    error,
+                )
+                break
+        async with self._lock:
+            if failed is None:
+                self.manifest(name).save(self.manifest_path(name))
+            else:
+                self._reload_manifest(name)
+        return stats
+
+    def _reload_manifest(self, name):
+        """Throw away an in-memory manifest in favour of the stored one."""
+        path = self.manifest_path(name)
+        try:
+            self._manifests[name] = Manifest.load(path)
+        except (OSError, ValueError) as error:
+            logger.error(
+                "synchronization: cannot reload the manifest of repository "
+                "%r from %s: %s",
+                name,
+                path,
+                error,
+            )
+            return
+        logger.info(
+            "synchronization: repository %r is left unchanged and will be "
+            "retried with a fresh manifest of the peer unit",
+            name,
+        )
+
+    def _remove_local_file(self, name, rel_path):
+        """Delete one tracked file whose merged history records a deletion."""
+        root = self.repo_path(name)
+        full_path = root / rel_path
+        if not _is_inside(root, full_path):
+            raise TransferError(
+                f"{rel_path!r} does not stay inside repository {name!r}"
+            )
+        try:
+            full_path.unlink(missing_ok=True)
+        except OSError as error:
+            raise TransferError(f"cannot delete {full_path}: {error}") from error
+
+    async def _fetch_file(self, unit_id, name, rel_path, expected_hash):
+        """Fetch the body of one tracked file from a peer unit.
+
+        The bytes are streamed into ``<target><TEMP_SUFFIX>`` next to the
+        target (a name the manifest scan never tracks), verified against the
+        announced size and against the hash the remote manifest recorded,
+        given the access mode and the ownership this unit is configured with,
+        and only then renamed onto the target: a file inside a repository is
+        always a complete version.  Whatever fails, the temporary file is
+        removed and the target stays as it was.
+
+        Raises :class:`TransferError` with the reason the file did not arrive.
+        """
+        target = self.peer_target(unit_id)
+        if target is None:
+            raise TransferError(f"unit {unit_id!r} has no known address")
+        address, tcp_port = target
+        root = self.repo_path(name)
+        full_path = root / rel_path
+        if not _is_inside(root, full_path):
+            raise TransferError(
+                f"{rel_path!r} does not stay inside repository {name!r}"
+            )
+        part_path = full_path.with_name(full_path.name + TEMP_SUFFIX)
+        if part_path.exists():
+            raise TransferError(f"{rel_path!r} is already being downloaded")
+        timeout = self.transfer_timeout
+        query = urlencode({_REPOSITORY_QUERY: name, _PATH_QUERY: rel_path})
+        writer = None
+        try:
+            async with self._fetching_slots:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(address, tcp_port), timeout
+                )
+                writer.write(
+                    _request_head(
+                        f"/file?{query}",
+                        self._config.trusted_token,
+                    )
+                )
+                await writer.drain()
+                status, reason, head = await asyncio.wait_for(
+                    _read_response_head(reader), timeout
+                )
+                if status != 200:
+                    detail = await asyncio.wait_for(reader.read(400), timeout)
+                    raise TransferError(
+                        f"unit {unit_id!r} refused {name}/{rel_path}: "
+                        f"{status} {reason} "
+                        f"{detail.decode('utf-8', errors='replace').strip()}"
+                    )
+                file_hash, size, serving_unit = parse_file_headers(head)
+                if serving_unit != unit_id:
+                    logger.warning(
+                        "synchronization: the answer for %r came from unit "
+                        "%r, not from the expected %r",
+                        rel_path,
+                        serving_unit,
+                        unit_id,
+                    )
+                if file_hash != expected_hash:
+                    # the peer moved on since its manifest was fetched: the
+                    # body would be a version no history records.
+                    raise TransferError(
+                        f"unit {unit_id!r} serves hash {file_hash} of "
+                        f"{rel_path!r}, the manifest expects {expected_hash}"
+                    )
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                written, digest = await _stream_into_file(
+                    reader,
+                    part_path,
+                    size,
+                    timeout,
+                    self._config.max_transfer_size,
+                )
+                if written != size:
+                    raise TransferError(
+                        f"unit {unit_id!r} sent {written} of the {size} "
+                        f"bytes of {rel_path!r} it announced"
+                    )
+                if digest.hexdigest() != file_hash:
+                    raise TransferError(
+                        f"the content of {rel_path!r} does not match the hash "
+                        f"{file_hash} of unit {unit_id!r}"
+                    )
+                await asyncio.to_thread(
+                    _publish_fetched_file, self._config, part_path, full_path
+                )
+        except TransferError:
+            part_path.unlink(missing_ok=True)
+            raise
+        except TimeoutError as error:
+            part_path.unlink(missing_ok=True)
+            raise TransferError(
+                f"the transfer of {rel_path!r} from unit {unit_id!r} stayed "
+                f"idle for {timeout} s"
+            ) from error
+        except (
+            OSError,
+            ValueError,
+            asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
+        ) as error:
+            part_path.unlink(missing_ok=True)
+            raise TransferError(
+                f"cannot fetch {rel_path!r} from unit {unit_id!r}: {error}"
+            ) from error
+        finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except (ConnectionError, OSError):
+                    pass
+        logger.info(
+            "synchronization: fetched %r of repository %r from unit %r "
+            "(%d bytes)",
+            rel_path,
+            name,
+            unit_id,
+            written,
+        )
+
+    async def _request_status(self, unit_id):
+        """The ``(short status, manifests)`` pair a peer unit reports."""
+        payload = await self._request_peer_data(unit_id, "/status", {})
+        try:
+            return parse_status(payload)
+        except ValueError as error:
+            raise TransferError(
+                f"unit {unit_id!r} answered with an unreadable status: {error}"
+            ) from error
+
+    async def _request_peer_data(self, unit_id, path, query):
+        """One plain ``GET`` to a peer unit; returns its body as text.
+
+        Used for the small, fully buffered answers of the unit-to-unit
+        protocol (``status``); the body of a ``file`` answer is streamed
+        instead.  Raises :class:`TransferError` for a peer that cannot be
+        reached or that does not answer with ``200 OK``.
+        """
+        target = self.peer_target(unit_id)
+        if target is None:
+            raise TransferError(f"unit {unit_id!r} has no known address")
+        address, tcp_port = target
+        timeout = self.transfer_timeout
+        params = dict(query)
+        params[_UNIT_QUERY] = self.identifier
+        writer = None
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(address, tcp_port), timeout
+            )
+            writer.write(
+                _request_head(f"{path}?{urlencode(params)}")
+            )
+            await writer.drain()
+            status, reason, head = await asyncio.wait_for(
+                _read_response_head(reader), timeout
+            )
+            if status != 200:
+                raise TransferError(
+                    f"unit {unit_id!r} answered {path} with {status} {reason}"
+                )
+            body = await _read_body(reader, head, timeout)
+            return body.decode("utf-8", errors="replace")
+        except TransferError:
+            raise
+        except TimeoutError as error:
+            raise TransferError(
+                f"unit {unit_id!r} stayed silent for {timeout} s"
+            ) from error
+        except (
+            OSError,
+            ValueError,
+            asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
+        ) as error:
+            raise TransferError(
+                f"cannot reach unit {unit_id!r}: {error}"
+            ) from error
+        finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except (ConnectionError, OSError):
+                    pass
+
+    async def serve_file(self, writer, method, query, headers):
+        """Answer one ``file`` request by streaming the tracked file.
+
+        The request never changes the state of this unit: no repository is
+        rescanned and no manifest is written.  Three independent guards
+        decide whether the content may leave: the peer proves that it belongs
+        to the backup network with the shared token, the path must be tracked
+        by the manifest of the repository (which rules out anything this unit
+        does not consider its own data), and the resolved path must stay
+        inside the repository root.  A refusal is a status code and one line
+        of text, a success is the raw content preceded by its hash, its size
+        and the name of this unit: the receiving unit decides the file system
+        properties of the file it writes itself.
+        """
+        if method != "GET":
+            await _write_text_response(writer, 405, "method not allowed")
+            return
+        try:
+            repository, rel_path = parse_file_target(query)
+        except ValueError as error:
+            await _write_text_response(writer, 400, str(error))
+            return
+        token = headers.get(FILE_TOKEN_HEADER.lower(), "")
+        if token != self._config.trusted_token:
+            await _write_text_response(
+                writer, 403, f"a matching {FILE_TOKEN_HEADER} header is required"
+            )
+            return
+        try:
+            manifest = self.manifest(repository)
+        except KeyError:
+            await _write_text_response(
+                writer, 404, f"unknown repository: {repository}"
+            )
+            return
+        root = self.repo_path(repository)
+        full_path = root / rel_path
+        if not _is_inside(root, full_path):
+            await _write_text_response(
+                writer,
+                403,
+                f"{rel_path} resolves outside repository {repository}",
+            )
+            return
+        version = manifest.files.get(rel_path)
+        if version is None:
+            await _write_text_response(
+                writer,
+                404,
+                f"{rel_path} is not tracked in repository {repository}",
+            )
+            return
+        if is_deleted(version):
+            await _write_text_response(
+                writer,
+                410,
+                f"{rel_path} is recorded as deleted in repository {repository}",
+            )
+            return
+        if manifest_status(manifest) == STATUS_FAULTY:
+            await _write_text_response(
+                writer, 409, f"repository {repository} is faulty"
+            )
+            return
+        file_hash = current_hash(version)
+        if file_hash is None:
+            await _write_text_response(
+                writer,
+                404,
+                f"{rel_path} has no version this unit can serve",
+            )
+            return
+        size, refusal = await asyncio.to_thread(
+            _check_served_file,
+            full_path,
+            file_hash,
+            version["timestamp"],
+            self._config.max_transfer_size,
+        )
+        if refusal is not None:
+            status, message = refusal
+            await _write_text_response(writer, status, message)
+            return
+        async with self._serving_slots:
+            await _serve_head(
+                writer,
+                200,
+                "application/octet-stream",
+                generate_file_headers(self.identifier, file_hash, size),
+            )
+            try:
+                sent = await _stream_file(writer, full_path)
+            except (ConnectionError, OSError) as error:
+                # the peer is gone; the announced size was not reached, which
+                # is what the requester checks before it accepts the file.
+                logger.warning(
+                    "serving %r of repository %r was interrupted: %s",
+                    rel_path,
+                    repository,
+                    error,
+                )
+                return
+        logger.info(
+            "served %r of repository %r (%d bytes)", rel_path, repository, sent
+        )
 
     # ---------------------------------------------------------- HTTP handler
 
@@ -786,6 +1433,18 @@ class Discovery:
             for unit_id, peer in sorted(self._peers.items())
         ]
 
+    def peer_target(self, unit_id):
+        """``(address, tcp_port)`` to reach ``unit_id`` over TCP.
+
+        The address is the one the peer sent its announcements from, which is
+        the address its HTTP server listens on.  ``None`` is returned when the
+        peer is not (or no longer) known, or announced without a TCP port -- a
+        unit without a server address cannot be synchronized with.
+        """
+        peer = self._peers.get(unit_id)
+        if peer is None or peer["tcp_port"] is None:
+            return None
+        return peer["address"], peer["tcp_port"]
 
     # ------------------------------------------------------------ start / stop
 
@@ -1135,8 +1794,9 @@ class _ProtocolError(Exception):
 async def _read_request(reader):
     """Read one HTTP request from ``reader``.
 
-    Returns ``(method, path, query, body)`` where ``query`` is a parsed
-    query dict and ``body`` the raw body bytes.  Returns ``None`` when the
+    Returns ``(method, path, query, headers, body)`` where ``query`` is a
+    parsed query dict, ``headers`` maps lower-cased header names to their
+    value and ``body`` the raw body bytes.  Returns ``None`` when the
     connection closes before a request arrives.  Raises
     :class:`_ProtocolError` for malformed requests.
     """
@@ -1164,7 +1824,7 @@ async def _read_request(reader):
             raise _ProtocolError(413, "payload too large")
         body = await reader.readexactly(length) if length else b""
     query = parse_qs(urlsplit(target).query)
-    return method, urlsplit(target).path, query, body
+    return method, urlsplit(target).path, query, headers, body
 
 
 async def _write_response(writer, status, content_type, payload):
@@ -1182,12 +1842,20 @@ async def _write_response(writer, status, content_type, payload):
 
 
 async def _handle_connection(unit, reader, writer):
-    """Serve one client connection (one request, then close)."""
+    """Serve one client connection (one request, then close).
+
+    A ``file`` request is answered here directly: its body is streamed from
+    the repository instead of being buffered into a response tuple, so the
+    other endpoints go through :meth:`Unit.handle_http` first.
+    """
     try:
         request = await _read_request(reader)
         if request is None:
             return
-        method, path, query, body = request
+        method, path, query, headers, body = request
+        if path == "/file":
+            await unit.serve_file(writer, method, query, headers)
+            return
         status, content_type, payload = await unit.handle_http(
             method, path, query, body
         )
@@ -1211,6 +1879,254 @@ async def _handle_connection(unit, reader, writer):
         except (ConnectionError, OSError):
             pass
 
+
+# --------------------------------------------------------------- file serving
+
+
+def _check_served_file(full_path, file_hash, modified, max_size):
+    """Verify a tracked file before its content leaves this unit.
+
+    ``file_hash`` and ``modified`` are what the manifest records for the
+    path.  Returns a ``(size, refusal)`` pair: ``size`` is the number of
+    bytes to announce when the file may be served, ``refusal`` is a
+    ``(status code, one line message)`` pair taken from the table of the
+    "File request" section of ``docs/software_architecture.md`` and ``None``
+    when the file may be served.
+
+    Answering with a status code instead of rescanning the repository keeps
+    the integrity check the only code that writes a manifest; a mismatch
+    here always means the local manifest is stale and the requester has to
+    start again from a fresh ``status`` request.
+    """
+    try:
+        # lstat, not stat: a tracked path that became a symlink is not a regular
+        # file, and following it would serve whatever it points to - possibly
+        # outside the repository.  The manifest never tracks a symlink either.
+        info = full_path.lstat()
+    except OSError as error:
+        return None, (409, f"{full_path} disappeared from the repository: {error}")
+    if not stat.S_ISREG(info.st_mode):
+        return None, (415, f"{full_path} is not a regular file")
+    if int(info.st_mtime) != int(modified.timestamp()):
+        return None, (
+            409,
+            f"{full_path} was modified since the last integrity check",
+        )
+    if max_size is not None and info.st_size > max_size:
+        return None, (
+            413,
+            f"{full_path} is {info.st_size} bytes, above "
+            f"max_transfer_size={max_size}",
+        )
+    try:
+        digest = hash_file(full_path)
+    except OSError as error:
+        return None, (409, f"{full_path} cannot be read: {error}")
+    if digest != file_hash:
+        return None, (
+            409,
+            f"{full_path} does not match the hash {file_hash} its manifest "
+            f"records (read {digest})",
+        )
+    return info.st_size, None
+
+
+async def _serve_head(writer, status, content_type=None, extra_headers=None):
+    """Write one HTTP/1.1 head whose body the caller streams afterwards."""
+    lines = [f"HTTP/1.1 {status} {_STATUS_TEXTS.get(status, 'Error')}"]
+    if content_type is not None:
+        lines.append(f"Content-Type: {content_type}")
+    for name, value in (extra_headers or {}).items():
+        lines.append(f"{name}: {value}")
+    lines.append("Connection: close")
+    writer.write("\r\n".join(lines).encode("iso-8859-1") + b"\r\n\r\n")
+    await writer.drain()
+
+
+async def _write_text_response(writer, status, message):
+    """Refuse a request with the one line ``text/plain`` body of the protocol."""
+    await _write_response(writer, status, "text/plain; charset=utf-8", message + "\n")
+
+
+async def _stream_file(writer, full_path, chunk_size=_CHUNK_SIZE):
+    """Send the content of ``full_path`` in chunks; return the byte count.
+
+    Each chunk is read in a worker thread and written into the transport,
+    whose flow control pauses the loop while the peer is not reading: a
+    large file costs one chunk of memory and never blocks the unit.  No
+    timeout applies here; the head of the answer already announced the size,
+    so a peer that disappears simply stops reading and the exception that
+    follows ends the transfer.
+    """
+
+    def _read_chunk(handle):
+        return handle.read(chunk_size)
+
+    sent = 0
+    with open(full_path, "rb") as handle:
+        while True:
+            chunk = await asyncio.to_thread(_read_chunk, handle)
+            if not chunk:
+                break
+            writer.write(chunk)
+            await writer.drain()
+            sent += len(chunk)
+    return sent
+
+
+# ------------------------------------------------------------ client plumbing
+
+
+#: Largest response head accepted from a peer unit.
+_MAX_HEAD = 64 * 1024
+
+
+def _request_head(target, token=None):
+    """The bytes of one ``GET`` request head sent to a peer unit.
+
+    ``target`` is the path plus query string.  Only a ``file`` request is
+    given the shared ``token``: the other endpoints expose status information
+    alone (see the "File request" section of
+    ``docs/software_architecture.md``).
+    """
+    lines = [f"GET {target} HTTP/1.1", "Connection: close"]
+    if token is not None:
+        lines.append(f"{FILE_TOKEN_HEADER}: {token}")
+    return ("\r\n".join(lines) + "\r\n\r\n").encode("iso-8859-1")
+
+
+async def _read_response_head(reader):
+    """Read one HTTP response head from a peer.
+
+    Returns a ``(status code, reason, headers)`` tuple, with lower-cased
+    header names.  Raises ``ValueError`` for anything that is not a
+    well-formed head, which is how a requester notices that its peer does not
+    speak this version of the protocol.  A peer that closes the connection
+    before answering, or that sends a head too large to read, is reported the
+    same way: the callers of this helper all know what to do with a
+    ``ValueError`` and nothing else.
+    """
+    try:
+        data = await reader.readuntil(b"\r\n\r\n")
+    except asyncio.IncompleteReadError:
+        raise ValueError("the peer closed the connection before answering") from None
+    except asyncio.LimitOverrunError:
+        raise ValueError(
+            f"no response head was found within the {_MAX_HEAD} bytes allowed"
+        ) from None
+    if len(data) > _MAX_HEAD:
+        raise ValueError(f"a response head above {_MAX_HEAD} bytes was sent")
+    lines = data.decode("iso-8859-1").split("\r\n")
+    parts = lines[0].split(" ", 2)
+    if len(parts) < 2 or not parts[0].startswith("HTTP/1."):
+        raise ValueError(f"not an HTTP response status line: {lines[0]!r}")
+    try:
+        status = int(parts[1])
+    except ValueError:
+        raise ValueError(f"malformed HTTP status code: {parts[1]!r}") from None
+    headers = {}
+    for line in lines[1:]:
+        if ":" in line:
+            name, value = line.split(":", 1)
+            headers[name.strip().lower()] = value.strip()
+    return status, (parts[2] if len(parts) > 2 else ""), headers
+
+
+async def _read_body(reader, head, timeout):
+    """Read a whole response body: the announced ``Content-Length``, else EOF.
+
+    Raises ``ValueError`` for a truncated answer, so a caller never works
+    with a half received message.
+    """
+    if "content-length" not in head:
+        return await _read_until_eof(reader, timeout)
+    try:
+        size = int(head["content-length"])
+    except ValueError:
+        raise ValueError(
+            f"malformed Content-Length header: {head['content-length']!r}"
+        ) from None
+    if size <= 0:
+        return b""
+    try:
+        return await asyncio.wait_for(reader.readexactly(size), timeout)
+    except asyncio.IncompleteReadError as error:
+        raise ValueError(
+            f"the answer ended after {len(error.partial)} of the {size} "
+            "announced bytes"
+        ) from error
+
+
+async def _read_until_eof(reader, timeout):
+    """Read a response body that announced no length, until the peer closes."""
+    chunks = []
+    while True:
+        chunk = await asyncio.wait_for(reader.read(_CHUNK_SIZE), timeout)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+async def _stream_into_file(reader, part_path, size, timeout, max_size=None):
+    """Stream ``size`` bytes of a response body into ``part_path``.
+
+    Returns the ``(bytes written, md5 digest)`` pair the caller compares with
+    what the head of the answer announced: the content is written as it
+    arrives and never buffered.  A body that grows past ``max_size`` is given
+    up on immediately -- that is the receiving side of ``max_transfer_size``:
+    a peer that ignores its own limit must not fill up the repository.
+
+    Raises ``ValueError`` for a body above ``max_size`` and ``TimeoutError``
+    when the peer stays idle for ``timeout`` seconds.
+    """
+
+    digest = hashlib.md5()
+    written = 0
+    with open(part_path, "wb") as handle:
+        while written < size:
+            chunk = await asyncio.wait_for(
+                reader.read(min(_CHUNK_SIZE, size - written)), timeout
+            )
+            if not chunk:
+                break  # the peer disappeared mid-transfer
+            written += len(chunk)
+            if max_size is not None and written > max_size:
+                raise ValueError(
+                    f"the peer sent more than the {max_size} bytes of "
+                    "max_transfer_size"
+                )
+            digest.update(chunk)
+            handle.write(chunk)
+    return written, digest
+
+
+def _publish_fetched_file(config, part_path, full_path):
+    """Give a verified temporary file its configured properties and place it.
+
+    The access mode and the ownership a unit is configured to give the files
+    it fetches (``fetched_file_mode``, ``fetched_owner_id`` and
+    ``fetched_group_id``) are applied while the file is still out of sight;
+    the rename onto the target is atomic within a filesystem, so a file that
+    is visible in a repository is always a complete version.  When they
+    cannot be applied -- a missing privilege, for example -- the temporary
+    file is deleted and the fetch fails rather than publishing a file without
+    its configured properties.
+    """
+    try:
+        if config.fetched_file_mode is not None:
+            os.chmod(part_path, config.fetched_file_mode)
+        if config.fetched_owner_id is not None or config.fetched_group_id is not None:
+            os.chown(
+                part_path,
+                -1 if config.fetched_owner_id is None else config.fetched_owner_id,
+                -1 if config.fetched_group_id is None else config.fetched_group_id,
+            )
+        os.replace(part_path, full_path)
+    except OSError as error:
+        part_path.unlink(missing_ok=True)
+        raise TransferError(
+            f"cannot place the fetched file {full_path}: {error}"
+        ) from error
 
 
 # ---------------------------------------------------------------------- run
@@ -1248,6 +2164,9 @@ async def run(config):
         if config.discovery_port is not None:
             discovery = Discovery(unit)
             await discovery.start()
+            # synchronization asks this table where a unit is at the moment
+            # its files are fetched.
+            unit.set_discovery(discovery)
         else:
             logger.info(
                 "network discovery: disabled (no discovery_port configured)"
@@ -1259,6 +2178,10 @@ async def run(config):
             config.port,
         )
         logger.info("listening on %s:%d", address, config.port)
+
+        def unit_is_busy():
+            """Whether an integrity check or a synchronization round runs."""
+            return unit.is_busy
 
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
@@ -1274,11 +2197,17 @@ async def run(config):
                     unit.integrity_check,
                     config.integrity_delay,
                     config.integrity_schedule,
+                    busy_check=unit_is_busy,
                 ),
                 name="integrity-check",
             ),
             asyncio.create_task(
-                schedule_loop(unit.sync, config.sync_delay, config.sync_schedule),
+                schedule_loop(
+                    unit.sync,
+                    config.sync_delay,
+                    config.sync_schedule,
+                    busy_check=unit_is_busy,
+                ),
                 name="synchronization",
             ),
         ]

@@ -35,6 +35,14 @@ on invalid input:
 - ``fetched_owner_id``   : optional numeric user id that owns the fetched
   files.
 - ``fetched_group_id``   : optional numeric group id of the fetched files.
+- ``max_transfer_size``  : optional integer, largest file (in bytes) a unit
+  serves or accepts over a ``file`` request (``None``: no limit).
+- ``transfer_timeout``   : optional integer number of seconds a ``file`` or
+  ``status`` transfer may stay idle before it is given up (``None``: the unit
+  applies ``DEFAULT_TRANSFER_TIMEOUT``).
+- ``max_parallel_transfers`` : optional integer number of ``file`` transfers a
+  unit runs at the same time, counting both directions (``None``: the unit
+  applies ``DEFAULT_MAX_PARALLEL_TRANSFERS``).
 
 ``sync_delay`` and ``sync_schedule`` are mutually exclusive, but at least one
 of them must be defined; the same applies to the ``integrity_delay`` /
@@ -63,6 +71,15 @@ _INT_RE = re.compile(r"-?\d+")
 #: A file access mode written as octal digits, e.g. ``"0644"``.
 _OCTAL_RE = re.compile(r"[0-7]+")
 
+#: Seconds a ``file`` or ``status`` transfer may stay idle when the config
+#: does not set ``transfer_timeout``.  The transfer is given up (and retried
+#: at the next synchronization) when a peer stops sending for that long.
+DEFAULT_TRANSFER_TIMEOUT = 300
+
+#: How many ``file`` transfers a unit runs at the same time when the config
+#: does not set ``max_parallel_transfers``.
+DEFAULT_MAX_PARALLEL_TRANSFERS = 2
+
 #: Known top-level config fields (see the readme "Config file" section).
 _CONFIG_FIELDS = (
     "port",
@@ -80,6 +97,9 @@ _CONFIG_FIELDS = (
     "fetched_file_mode",
     "fetched_owner_id",
     "fetched_group_id",
+    "max_transfer_size",
+    "transfer_timeout",
+    "max_parallel_transfers",
 )
 
 #: Delay/schedule pairs that are mutually exclusive but jointly required.
@@ -173,6 +193,22 @@ def _validate_optional_port(field, value):
 def _validate_delay(field, value):
     if value is None:
         return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer, got {_type_name(value)}")
+    if value <= 0:
+        raise ValueError(f"{field} must be a positive integer, got {value}")
+    return value
+
+
+def _validate_positive_int(field, value, default=None):
+    """Optional positive integer falling back to ``default`` when unset.
+
+    ``None`` is always an accepted value: an optional field the config does
+    not mention keeps reporting ``None`` (or ``default`` when the caller has
+    one), so a saved config file never grows fields nobody asked for.
+    """
+    if value is None:
+        return default
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{field} must be an integer, got {_type_name(value)}")
     if value <= 0:
@@ -318,6 +354,9 @@ class UnitConfig:
         fetched_file_mode=None,
         fetched_owner_id=None,
         fetched_group_id=None,
+        max_transfer_size=None,
+        transfer_timeout=None,
+        max_parallel_transfers=None,
     ):
         self._port = _validate_port(port)
         self._discovery_port = _validate_optional_port(
@@ -351,6 +390,15 @@ class UnitConfig:
         )
         self._fetched_group_id = validate_numeric_id(
             "fetched_group_id", fetched_group_id
+        )
+        self._max_transfer_size = _validate_positive_int(
+            "max_transfer_size", max_transfer_size
+        )
+        self._transfer_timeout = _validate_positive_int(
+            "transfer_timeout", transfer_timeout
+        )
+        self._max_parallel_transfers = _validate_positive_int(
+            "max_parallel_transfers", max_parallel_transfers
         )
 
         for delay_field, schedule_field in _DELAY_SCHEDULE_PAIRS:
@@ -439,6 +487,25 @@ class UnitConfig:
     def fetched_group_id(self):
         """Numeric group id of fetched files (``None`` if not set)."""
         return self._fetched_group_id
+
+    @property
+    def max_transfer_size(self):
+        """Largest file (bytes) served or accepted over a ``file`` request
+        (``None`` if not set: files of any size are transferred)."""
+        return self._max_transfer_size
+
+    @property
+    def transfer_timeout(self):
+        """Seconds a transfer may stay idle before it is given up (``None``
+        if not set: the unit applies :data:`DEFAULT_TRANSFER_TIMEOUT`)."""
+        return self._transfer_timeout
+
+    @property
+    def max_parallel_transfers(self):
+        """Number of ``file`` transfers the unit runs at the same time
+        (``None`` if not set: the unit applies
+        :data:`DEFAULT_MAX_PARALLEL_TRANSFERS`)."""
+        return self._max_parallel_transfers
 
     # ---------------------------------------------------------- construction
 

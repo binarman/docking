@@ -54,6 +54,24 @@ compact JSON object::
         "trusted_token": "<shared network token>"
     }
 
+``/file`` (unit x unit) -- the request query is decoded by
+:func:`parse_file_target` (whose ``path`` field is validated by
+:func:`canonical_rel_path`), and the headers of a successful answer are
+built by :func:`generate_file_headers` and decoded by
+:func:`parse_file_headers`.  The answer carries the raw file bytes and
+three headers::
+
+    Content-Length: <size in bytes>
+    X-Beacon-File-Hash: <md5 hex digest the serving unit's manifest records>
+    X-Beacon-Unit: <serving unit name>
+
+The request carries the shared token in the ``X-Beacon-Token`` header
+(:data:`FILE_TOKEN_HEADER`); it is the only request that exposes user data
+and therefore the only one that is authenticated.  No file system metadata
+travels with the body: the receiving unit decides mode, owner and group of
+the file it writes (see the "File request" section of
+``docs/software_architecture.md``).
+
 ``/summary`` (unit x user) -- :func:`generate_summary` renders the HTML
 page that answers a GET to ``<unit_address>/summary``.
 
@@ -78,6 +96,7 @@ the expected format.
 import base64
 import html
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -578,6 +597,215 @@ def parse_discovery(message):
             f"got {_type_name(trusted_token)}"
         )
     return unit_id, unit_port, tcp_port, trusted_token
+
+
+# -------------------------------------------------------------- file message
+
+#: Request header carrying the shared ``trusted_token`` of the backup
+#: network; the serving unit refuses a ``file`` request whose token does not
+#: match (see the "File request" section of
+#: ``docs/software_architecture.md``).
+FILE_TOKEN_HEADER = "X-Beacon-Token"
+
+#: Response headers of a successful ``file`` request: the size of the body,
+#: the hash the serving unit's manifest records for the file and the name of
+#: the serving unit.
+CONTENT_LENGTH_HEADER = "Content-Length"
+FILE_HASH_HEADER = "X-Beacon-File-Hash"
+FILE_UNIT_HEADER = "X-Beacon-Unit"
+
+#: The md5 hex digest ``manifest.py`` stores for a file.
+_MD5_RE = re.compile(r"[0-9a-fA-F]{32}")
+
+
+def canonical_rel_path(path):
+    """Validate the ``path`` of a ``file`` request and return its canonical
+    form.
+
+    A canonical path is a non-empty relative POSIX path that uses ``/`` as
+    its only separator, contains no ``\\``, ``:`` or NUL character and has no
+    empty, ``.`` or ``..`` component.  This is what makes a path that arrives
+    from a peer safe to resolve under a local repository root; file names
+    that need those characters are simply not addressable by a ``file``
+    request (they stay tracked in the manifest).  Raises ``ValueError`` for
+    anything else.
+    """
+    if not isinstance(path, str):
+        raise ValueError(f"file path must be a string, got {_type_name(path)}")
+    if not path:
+        raise ValueError("file path must not be empty")
+    for character, reason in (
+        ("\\", "a backslash: '/' is the only accepted separator"),
+        (":", "a colon: absolute and drive-qualified paths are not allowed"),
+        ("\x00", "a NUL character"),
+    ):
+        if character in path:
+            raise ValueError(
+                f"invalid file path {path!r}: it contains {reason}"
+            )
+    for component in path.split("/"):
+        if not component:
+            raise ValueError(
+                f"invalid file path {path!r}: it has an empty component "
+                "(a leading, trailing or doubled '/')"
+            )
+        if component in (".", ".."):
+            raise ValueError(
+                f"invalid file path {path!r}: '.' and '..' components are "
+                "not allowed"
+            )
+    return path
+
+
+def _single_query_value(query, field):
+    """The single value of ``field`` in a parsed request query string.
+
+    Accepts both the ``{name: [value, ...]}`` layout of ``urllib.parse`` and
+    a plain ``{name: value}`` mapping.  Raises ``ValueError`` when the field
+    is missing or given more than once.
+    """
+    if not isinstance(query, dict):
+        raise ValueError(
+            f"file request query must be a mapping, got {_type_name(query)}"
+        )
+    if field not in query:
+        raise ValueError(
+            f"file request is missing the {field!r} query parameter"
+        )
+    value = query[field]
+    if isinstance(value, (list, tuple)):
+        if len(value) != 1:
+            raise ValueError(
+                f"file request parameter {field!r} is ambiguous: "
+                f"{len(value)} values given"
+            )
+        value = value[0]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            f"file request parameter {field!r} must be a non-empty string, "
+            f"got {value!r}"
+        )
+    return value
+
+
+def parse_file_target(query):
+    """Decode the query string of a ``file`` request.
+
+    Returns a ``(repository name, relative path)`` tuple; the path is the
+    canonical form validated by :func:`canonical_rel_path`.  Raises
+    ``ValueError`` for a missing, ambiguous or non-canonical field.
+    """
+    repository = _single_query_value(query, "repository")
+    rel_path = canonical_rel_path(_single_query_value(query, "path"))
+    return repository, rel_path
+
+
+def _validate_file_hash(field, value):
+    """A 32 character md5 hex digest, returned unchanged."""
+    if not isinstance(value, str) or _MD5_RE.fullmatch(value) is None:
+        raise ValueError(
+            f"{field} must be a 32 character hexadecimal md5 digest, "
+            f"got {value!r}"
+        )
+    return value
+
+
+def _validate_size(field, value):
+    """A non-negative byte count, returned unchanged."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"{field} must be an integer number of bytes, "
+            f"got {_type_name(value)}"
+        )
+    if value < 0:
+        raise ValueError(f"{field} must not be negative, got {value}")
+    return value
+
+
+def generate_file_headers(unit_identifier, file_hash, size):
+    """Build the headers of a successful ``file`` answer.
+
+    ``unit_identifier`` is the serving unit, ``file_hash`` the md5 hex digest
+    its manifest records for the file and ``size`` the number of bytes of the
+    body.  The response carries no file system metadata: the receiving unit
+    decides the access mode and the ownership of the file it writes.
+    """
+    if not isinstance(unit_identifier, str) or not unit_identifier.strip():
+        raise ValueError(
+            f"unit identifier must be a non-empty string, "
+            f"got {unit_identifier!r}"
+        )
+    file_hash = _validate_file_hash("file hash", file_hash)
+    size = _validate_size("file size", size)
+    return {
+        CONTENT_LENGTH_HEADER: str(size),
+        FILE_HASH_HEADER: file_hash,
+        FILE_UNIT_HEADER: unit_identifier,
+    }
+
+
+def _header_values(headers):
+    """Lower-cased header names mapped to their single value."""
+    if not isinstance(headers, dict):
+        raise ValueError(
+            f"file answer headers must be a mapping, got {_type_name(headers)}"
+        )
+    values = {}
+    for name, value in headers.items():
+        if not isinstance(name, str):
+            raise ValueError(
+                "file answer header names must be strings, "
+                f"got {_type_name(name)}"
+            )
+        if isinstance(value, (list, tuple)):
+            if len(value) != 1:
+                raise ValueError(
+                    f"file answer header {name!r} is ambiguous: "
+                    f"{len(value)} values given"
+                )
+            value = value[0]
+        values[name.strip().lower()] = value
+    return values
+
+
+def parse_file_headers(headers):
+    """Decode the headers of a ``file`` answer.
+
+    Returns a ``(file hash, size, unit identifier)`` tuple; header names are
+    matched whatever their casing.  Raises ``ValueError`` for a missing or
+    malformed value, which is how a requester notices that a peer does not
+    speak this version of the protocol.
+    """
+    values = _header_values(headers)
+    missing = [
+        header
+        for header in (FILE_HASH_HEADER, CONTENT_LENGTH_HEADER, FILE_UNIT_HEADER)
+        if header.lower() not in values
+    ]
+    if missing:
+        raise ValueError(
+            "file answer is missing the header(s): " + ", ".join(missing)
+        )
+    file_hash = _validate_file_hash(
+        f"{FILE_HASH_HEADER} header", values[FILE_HASH_HEADER.lower()]
+    )
+    size = values[CONTENT_LENGTH_HEADER.lower()]
+    if isinstance(size, str):
+        try:
+            size = int(size)
+        except ValueError:
+            raise ValueError(
+                f"{CONTENT_LENGTH_HEADER} header is not a number of bytes: "
+                f"{size!r}"
+            )
+    size = _validate_size(f"{CONTENT_LENGTH_HEADER} header", size)
+    unit_identifier = values[FILE_UNIT_HEADER.lower()]
+    if not isinstance(unit_identifier, str) or not unit_identifier.strip():
+        raise ValueError(
+            f"{FILE_UNIT_HEADER} header must be a non-empty string, "
+            f"got {unit_identifier!r}"
+        )
+    return file_hash, size, unit_identifier
 
 
 # ------------------------------------------------------------- summary page
