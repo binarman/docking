@@ -35,6 +35,8 @@ Before syncronization with remote, repo is checked for `fault` issues. If there 
 
 The main idea behind this algorithm is to keep files safe and to delete or update them only if the histories are consistent. If the histories diverged, request user intervention to investigate the issue manually. The synchronization algorithm itself does not communicate with the user; that is in the scope of the higher-level logic.
 
+"Fetch the file from the remote unit" is a `file` request; its format and the rules of writing the received bytes into the repository are described in the "File request" section of `docs/software_architecture.md`. Fetching is only one of the actions of the table above: the fetched version is recorded with the merged history, so a file and a manifest for it are always stored together.
+
 The reason why the `D` token has a unit ID is as follows. Consider the local `D` + remote `A/B` case: the algorithm should not fetch a deleted file if it was deleted somewhere in the past on the remote server. The algorithm needs to check that the remote unit knows about all local deletion events.
 
 ### Checking that one history is a subset of another

@@ -20,6 +20,10 @@ A manifest is a pickled ``Manifest`` object describing one local repository:
 ``Manifest`` is the single source of truth for manifest content: the debug
 tools (``create_manifest.py``, ``show_manifest.py``, ``compare_manifests.py``)
 and the future ``unit.py`` synchronization all go through it.
+
+A unit that downloads a file from a peer writes it next to its target under
+a name ending with ``TEMP_SUFFIX``; such a file holds an incomplete copy and
+a scan never tracks it.
 """
 
 import hashlib
@@ -35,6 +39,11 @@ ISSUE_TYPES = ("fault", "conflict")
 
 HASH_PREFIX = "hash:"
 DELETED_PREFIX = "deleted:"
+
+#: Suffix of the temporary files a unit writes next to its target while a
+#: file is being downloaded from a peer (see the "File request" section of
+#: ``docs/software_architecture.md``).
+TEMP_SUFFIX = ".beacon-part"
 
 _CHUNK_SIZE = 1024 * 1024
 
@@ -153,6 +162,9 @@ class Manifest:
     def _scan(self, root):
         for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
             for filename in filenames:
+                if filename.endswith(TEMP_SUFFIX):
+                    # an unfinished download next to its target
+                    continue
                 full_path = Path(dirpath) / filename
                 rel_path = full_path.relative_to(root).as_posix()
                 try:

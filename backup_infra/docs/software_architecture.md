@@ -40,7 +40,64 @@ The unit awaits POST requests for reevaluation at the <unit_address>/reevaluate 
 
 ### File request
 
-GET request for a tracked file. Detailed description TBD.
+This request is designed for unit x unit communication: it transfers the content of one tracked file from a unit that has the current version to a unit that is behind. The synchronization algorithm (see `docs/synchronization.md`) decides *which* files to request; this section defines *how* one file travels.
+
+The request is a GET to the <unit_address>/file address:
+
+```
+GET /file?repository=photos&path=vacation/img.jpg HTTP/1.1
+x-beacon-token: <trusted_token>
+```
+
+- `repository` is the formal repository name (the `name` field of a `repository` config entry);
+- `path` is the repository-relative POSIX path of the file, exactly as it appears in the manifest, URL-encoded;
+- `x-beacon-token` carries the shared `trusted_token`; a request without it, or with a different token, is refused. Only `file` requests are authenticated this way: the unit hands out user data over them, while `status` and `network` only expose status information.
+
+The hash of the requested file is deliberately **not** part of the request: a unit keeps a single copy of every file, and the requesting unit already knows which version it expects -- it read that hash from the remote manifest returned by the `status` request. Leaving the hash out keeps the request a plain read with no precondition to negotiate.
+
+`path` is canonical when it is not empty, is relative, uses `/` as the only separator, contains no `\`, `:` or NUL character and has no empty, `.` or `..` component. Every other value is rejected, which is what makes a peer supplied path safe to resolve locally; names that need those characters are simply not addressable by this request (they stay tracked in the manifest).
+
+The answer for a file the unit can serve is:
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Content-Length: 8123456
+X-Beacon-File-Hash: 9f2c1e8a5d4b3c2a1f0e9d8c7b6a5948
+X-Beacon-File-Mtime: 1731320000.000000
+X-Beacon-Unit: pc_test1
+Connection: close
+
+<raw file bytes>
+```
+
+- `X-Beacon-File-Hash` is the hash this unit's manifest records for the file (the md5 hex digest `manifest.py` stores). The receiving unit compares it with the hash it expects *before* reading the body, so a peer that already moved to a newer version costs one round trip and no bytes;
+- `X-Beacon-File-Mtime` is the modification time of the served copy in POSIX seconds. The receiver restores it on the file it writes so that both units keep recording the same manifest timestamp for the same content;
+- `X-Beacon-Unit` names the serving unit, which is what the requesting unit reports to the user and to its log.
+
+The status codes of a failed request, with a one line `text/plain` body:
+
+| Code | When |
+| --- | --- |
+| `400` | `repository` or `path` is missing or ambiguous, or `path` is not canonical |
+| `403` | the token is missing or does not match `trusted_token`, or `path` resolves outside the repository root |
+| `404` | unknown repository, or the file is not tracked in the manifest |
+| `405` | a method other than GET |
+| `409` | the repository has `fault` issues, or the file on disk does not match the manifest record (it disappeared, or its modification time moved on): the serving unit's own manifest is stale, so the requester must start again from a fresh `status` request instead of accepting bytes that belong to a version nobody recorded |
+| `410` | the manifest records the file as deleted |
+| `413` | the file is larger than `max_transfer_size` |
+| `415` | the tracked path is not a regular file (symlink, directory, device) |
+
+A `file` request never changes the state of the serving unit: it does not rescan the repository and does not touch a manifest. Serving relies on three independent guards: the file must be tracked in the manifest (which rules out anything the unit does not consider its own data), the resolved path must stay inside the repository root, and the repository must not be faulty. Answering `409` instead of rescanning keeps the integrity check as the only code that writes a manifest.
+
+The body is streamed in both directions and never buffered: the serving unit reads the file in chunks and relies on the flow control of the transport, so a multi gigabyte file costs one chunk of memory, and the `max_parallel_transfers` limit bounds how many transfers a unit serves at the same time.
+
+The receiving unit:
+
+1. writes the incoming bytes next to the target file under the `<target name>.beacon-part` name, which the manifest scan never tracks (see `manifest.TEMP_SUFFIX`); a temporary file that already exists means the same path is being downloaded already;
+2. checks that the number of received bytes equals `Content-Length` and that their md5 digest equals the hash expected from the remote manifest;
+3. on any mismatch (including a timeout or a peer that disappears mid-transfer) deletes the temporary file and leaves the target untouched, and reports the reason to the synchronization logic, which retries after refreshing the remote manifest;
+4. after a successful verification restores the modification time and renames the temporary file onto the target. The rename is atomic within a filesystem, so a crash can never leave a partially written file inside a repository; a file that is present in a repository is always a complete version.
 
 ### Discover request
 
@@ -75,8 +132,11 @@ At this stage, `network_messages.py` should implement the following interfaces:
 - `generate_network_status(remotes: list of tuples(name, status, last sync time)) -> string` generates a JSON string containing the network status;
 - `parse_network_status(string) -> list of tuples(name, status, last sync time)` decodes the JSON into the network status;
 - `generate_discovery(unit_identifier: string, unit_port: integer, tcp_port: integer, trusted_token: string) -> string` generates the UDP network discovery announcement (unit name, unit UDP port, unit TCP port and trusted token);
-- `parse_discovery(string) -> tuple(unit identifier, unit UDP port, unit TCP port, trusted token)` decodes the discovery announcement.
-- The `file` related handlers are TBD
+- `parse_discovery(string) -> tuple(unit identifier, unit UDP port, unit TCP port, trusted token)` decodes the discovery announcement;
+- `canonical_rel_path(string) -> string` validates the `path` of a `file` request and returns it in canonical form (`ValueError` for anything else);
+- `parse_file_target(query: dict) -> tuple(repository name, relative path)` decodes the query string of a `file` request (`ValueError` for a missing, ambiguous or non-canonical field);
+- `generate_file_headers(unit_identifier: string, file_hash: string, mtime: float, size: integer) -> dict(header name, value)` builds the headers of a successful `file` answer (`Content-Length` and the three `X-Beacon-*` headers);
+- `parse_file_headers(dict headers) -> tuple(file hash, mtime, size, unit identifier)` decodes those headers back, accepting any header name casing (`ValueError` for a missing or malformed value).
 
 ## desktop_notify.py behavior
 
